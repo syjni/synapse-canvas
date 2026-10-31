@@ -89,7 +89,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
     body = (<>
       <P>아이디·비밀번호는 다른 기기를 연결할 때 쓰는 열쇠입니다. 이메일은 받지 않습니다.</P>
       {input('id', '아이디 (영문 소문자·숫자·_ 4~20자)', 'text', 'my_id')}
-      {input('pw', '비밀번호 (8자 이상)', 'password')}
+      {input('pw', '비밀번호 (6자 이상)', 'password')}
       {input('pw2', '비밀번호 확인', 'password')}
       {input('device', '이 기기 이름')}
       {notes}
@@ -146,7 +146,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
       <P>아이디 열쇠의 비밀번호를 바꿉니다. 현재 비밀번호가 필요합니다. 잊었다면 ‘열쇠 재발급’을 쓰세요.</P>
       {input('id', '아이디', 'text', loginId)}
       {input('old', '현재 비밀번호', 'password')}
-      {input('pw', '새 비밀번호 (8자 이상)', 'password')}
+      {input('pw', '새 비밀번호 (6자 이상)', 'password')}
       {input('pw2', '새 비밀번호 확인', 'password')}
       {notes}
       {btn(busy ? '바꾸는 중…' : '비밀번호 변경', () => {
@@ -160,7 +160,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
     body = (<>
       <P>비밀번호를 잊었을 때: 새 아이디·비밀번호를 만들어 이 보관함에 등록하고, 이전 아이디 열쇠는 제거합니다. 연결된 기기들은 그대로 유지됩니다.</P>
       {input('id', '새 아이디')}
-      {input('pw', '새 비밀번호 (8자 이상)', 'password')}
+      {input('pw', '새 비밀번호 (6자 이상)', 'password')}
       {input('pw2', '새 비밀번호 확인', 'password')}
       {notes}
       {btn(busy ? '재발급 중…' : '새 열쇠 만들기', () => {

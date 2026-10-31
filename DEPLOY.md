@@ -45,7 +45,8 @@
    - **Allow anonymous sign-ins**: **켬**. 기기마다 "기기 열쇠"로 씁니다.
    - **Email** 공급자: 켬
      - **Confirm email**: **끔**. 아이디는 `아이디@users.synapse.invalid` 형태의 가짜 주소라 확인 메일을 받을 수 없습니다. 켜 두면 아이디 만들기가 "이메일 확인 필요" 오류로 멈춥니다.
-     - (선택) Minimum password length: 8
+     - **Minimum password length: 6**. 앱은 6자 이상이면 받고, 영문·숫자 조합 같은 다른 규칙은 검사하지 않습니다.
+     - **Password Requirements**(필수 문자 종류): **No required characters**(기본값) 그대로 둡니다. 다른 값을 고르면 앱에서는 통과한 비밀번호가 서버에서 "비밀번호가 너무 약합니다"로 거절됩니다.
 2. **Emails / SMTP**는 설정하지 않아도 됩니다(메일을 보내지 않음).
 3. (선택) **Rate Limits**: 익명 로그인 한도(기본값 시간당 IP별 30회 정도)는 개인 사용에 충분합니다.
 4. **CAPTCHA(Attack Protection)는 아직 켜지 마세요.** 5단계에서 앱에 Site Key를 넣은 뒤에 켭니다. 먼저 켜면 배포된 앱에서 가입·로그인·기기 연결이 모두 실패합니다.

@@ -272,7 +272,7 @@ export class SyncEngine {
 export const ID_RE = /^[a-z0-9_]{4,20}$/;
 export const idToEmail = (id: string) => `${id}@users.synapse.invalid`;
 export const checkId = (id: string) => (ID_RE.test(id) ? null : '아이디는 영문 소문자·숫자·_ 4~20자입니다.');
-export const checkPw = (pw: string) => (pw.length >= 8 ? null : '비밀번호는 8자 이상입니다.');
+export const checkPw = (pw: string) => (pw.length >= 6 ? null : '비밀번호는 6자 이상입니다.');
 
 export function friendly(e: unknown): string {
   const m = String((e as { message?: string })?.message || e || '');
