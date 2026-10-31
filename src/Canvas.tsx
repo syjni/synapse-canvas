@@ -322,11 +322,16 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
 
   // ── 뷰 ──────────────────────────────────────────────
   // 화면 위치(pan/zoom)는 기기 로컬 정보라 updatedAt을 찍지 않는다.
-  setView(v: Partial<View>) {
+  // v가 함수면 "지금까지 반영된" 화면 위치를 받아 계산한다. 휠·트랙패드처럼 화면이 다시 그려지기 전에 이벤트가 여러 번 오는 경우
+  // this.view()(마지막으로 그린 값)로 계산하면 앞의 이벤트를 덮어써서 움직임을 잃는다 (원을 그리면 한쪽 축으로만 움직이던 원인)
+  setView(v: Partial<View> | ((cur: View) => Partial<View>)) {
     const id = this.cat.id;
-    this.setState(s => ({ views: { ...s.views, [id]: { ...(s.views[id] || this.view()), ...v } } }), () => this.scheduleSave());
+    this.setState(s => {
+      const cur = s.views[id] || this.view();
+      return { views: { ...s.views, [id]: { ...cur, ...(typeof v === 'function' ? v(cur) : v) } } };
+    }, () => this.scheduleSave());
   }
-  setViewUser(v: Partial<View>) { this.userMoved = true; this.setView(v); }
+  setViewUser(v: Partial<View> | ((cur: View) => Partial<View>)) { this.userMoved = true; this.setView(v); }
   fitMargins() {
     if (this.mobile) return { L: 16, T: 60, R: 16, B: 130 };
     return { L: 80, T: 60, R: this.state.sel.length ? 250 : 30, B: 70 };
@@ -347,10 +352,13 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const ze = Math.max(0.2 * K, Math.min(1.2 * K, aw / (maxX - minX), ah / (maxY - minY)));
     return { z: ze / K, x: L + aw / 2 - ((minX + maxX) / 2) * ze, y: T + ah / 2 - ((minY + maxY) / 2) * ze };
   }
-  zoomAt(cx: number, cy: number, z2: number) {
+  // z2: 새 배율, 또는 지금 배율을 받아 새 배율을 돌려주는 함수(휠 — 연속 이벤트가 누적되도록)
+  zoomAt(cx: number, cy: number, z2: number | ((z: number) => number)) {
     this.userMoved = true;
-    const v = this.view(), z = Math.max(0.2, Math.min(3, z2)), k = z / v.z;
-    this.setView({ z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k });
+    this.setView(v => {
+      const z = Math.max(0.2, Math.min(3, typeof z2 === 'function' ? z2(v.z) : z2)), k = z / v.z;
+      return { z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
+    });
   }
   go(step: number) {
     const cs = this.cats, i = cs.findIndex(c => c.id === this.cat.id), n = cs.length;
@@ -687,8 +695,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     // 줄·페이지 단위(일부 마우스·Firefox)는 픽셀로 환산
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
     let ddx = e.deltaX * unit, ddy = e.deltaY * unit;
-    const v = this.view();
-    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, v.z * Math.exp(-ddy * 0.01)); return; }
+    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, z => z * Math.exp(-ddy * 0.01)); return; }
     // Shift + 세로 휠 = 가로 이동 (브라우저가 이미 가로로 바꿔 준 경우는 그대로)
     if (e.shiftKey && !ddx) { ddx = ddy; ddy = 0; }
     if (this.state.space) {
@@ -699,7 +706,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       if (Math.abs(this.wAcc) > WHEEL_SWIPE) { this.go(this.wAcc > 0 ? 1 : -1); this.wAcc = 0; this.wCool = Date.now() + 700; this.setState({ swipe: 0 }); }
       return;
     }
-    this.setViewUser({ x: v.x - ddx, y: v.y - ddy });
+    this.setViewUser(cur => ({ x: cur.x - ddx, y: cur.y - ddy }));
   }
   onKey(e: KeyboardEvent) {
     const tag = (e.target as Element).tagName;
