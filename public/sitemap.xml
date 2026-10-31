@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- /app(내용 없는 캔버스, noindex)은 넣지 않는다. 주소는 Cloudflare Pages의 확장자 없는 주소 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://pixiemap.pages.dev/</loc><lastmod>2026-10-31</lastmod></url>
+  <url><loc>https://pixiemap.pages.dev/privacy</loc><lastmod>2026-10-31</lastmod></url>
+  <url><loc>https://pixiemap.pages.dev/licenses</loc><lastmod>2026-10-31</lastmod></url>
+</urlset>

@@ -1,0 +1,25 @@
+# PixieMap
+
+> 어두운 캔버스 위에 생각을 상자로 놓고 뉴런처럼 이어서 정리하는 무료 로파이 감성 마인드맵 웹앱입니다.
+
+- 주소: https://pixiemap.pages.dev/ (앱 화면: https://pixiemap.pages.dev/app)
+- 가격: 무료 (결제·구독 없음)
+- 언어: 한국어
+- 플랫폼: 웹 브라우저, Windows·iOS·iPadOS·Android에 앱으로 설치 가능(PWA), 오프라인 동작
+
+## 주요 기능
+
+- 무한 캔버스에 글 상자·사진 상자를 놓고 곡선(뉴런)·직각(회로) 연결선으로 잇기
+- 글 상자에 Markdown 서식(제목, 목록, 체크박스, 인용, 코드)
+- 카테고리 탭으로 주제별 맵 나누기 (예: Mind, Ideas, Schedule)
+- 펜으로 자유롭게 그리기, 애플 펜슬 지원
+- 회원가입 없이 바로 사용, 맵은 기기 브라우저에 저장
+- 원하면 아이디 하나로 여러 기기 간 동기화
+- JSON 파일로 백업·복원
+- 갈무리 픽셀 폰트와 노이즈 그레인의 로파이 디자인
+
+## 링크
+
+- [소개](https://pixiemap.pages.dev/)
+- [개인정보처리방침](https://pixiemap.pages.dev/privacy)
+- [오픈소스 라이선스](https://pixiemap.pages.dev/licenses)

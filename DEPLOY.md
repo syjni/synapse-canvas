@@ -20,6 +20,7 @@
 | 5. Cloudflare Turnstile (같은 계정) → Supabase CAPTCHA 켜기 | 권장 | 스팸 가입 방지 |
 | 6. Windows 스토어 (PWABuilder → Partner Center) | 선택 | Microsoft Store 앱 |
 | 7. 각 기기 설치 | — | 홈 화면/시작 메뉴 앱 |
+| 10. 검색엔진 등록 (Google·네이버·Bing) | 권장 | 검색 결과·AI 추천에 노출 |
 
 - 동기화를 쓰지 않으면 1~3단계와 5단계는 건너뛰어도 됩니다. 그러면 앱은 기기에만 저장합니다.
 - Turnstile은 배포 주소(`*.pages.dev`)가 정해진 뒤에 만들어야 해서 4단계 다음에 둡니다.
@@ -118,7 +119,9 @@ git init
 ### 4-4. 배포 후 확인할 것
 
 - 주소창 오른쪽에 설치 아이콘이 나오는지 (Chrome/Edge)
-- 개인정보처리방침이 열리는지: `https://pixiemap.pages.dev/privacy.html`. 설정 맨 아래 **오픈소스 라이선스**가 열리는지(빌드할 때 `licenses.json`이 자동으로 만들어짐). 문의 연락처 칸을 채워 두세요(`public/privacy.html`의 `id="contact"`).
+- 주소 구조: `https://pixiemap.pages.dev/` = 소개 페이지, `/app` = 캔버스(앱). 이 기기에서 앱을 쓴 적이 있으면 `/`로 들어와도 바로 `/app`으로 갑니다. 소개 페이지를 다시 보려면 `/?intro`.
+- `/app`에서 새로고침해도 캔버스가 그대로 열리는지, 설치한 앱이 `/app`으로 열리는지
+- 개인정보처리방침 `https://pixiemap.pages.dev/privacy`, 오픈소스 라이선스 `https://pixiemap.pages.dev/licenses`가 열리는지. 앱의 설정 맨 아래 **오픈소스 라이선스**가 열리는지(빌드할 때 `licenses.json`이 자동으로 만들어짐). 문의 연락처 칸을 채워 두세요(`public/privacy.html`의 `id="contact"`).
 - 빌드가 실패하면 Pages 프로젝트 → **Deployments** → 실패한 항목 → **View details**에서 로그를 봅니다. Node 버전 오류라면 `NODE_VERSION=22`를 확인합니다.
 
 ## 5. Cloudflare Turnstile (같은 계정) → Supabase CAPTCHA
@@ -183,7 +186,7 @@ Supabase에서 CAPTCHA를 켜면 회원 가입, 로그인, 익명 로그인 모�
 ### 6-3. 제출
 Partner Center의 앱 → **Start your submission**에서:
 1. **Pricing and availability**: 무료, 시장 선택
-2. **Properties**: 카테고리(예: Productivity), 개인정보처리방침 URL = `https://pixiemap.pages.dev/privacy.html`
+2. **Properties**: 카테고리(예: Productivity), 개인정보처리방침 URL = `https://pixiemap.pages.dev/privacy`
 3. **Age ratings**: 설문 작성 (사용자 간 소통·결제 없음)
 4. **Packages**: `.msixbundle` 업로드
 5. **Store listings (한국어/영어)**: 설명 + **스크린샷 1장 이상** (1366×768 이상 권장)
@@ -223,7 +226,48 @@ PGlite(WASM Postgres)에 `schema.sql`을 그대로 올려 RLS, 연결 코드, �
 ```bash
 npm run build
 ```
-빌드 결과는 `dist/`에 생깁니다. `npm run preview`로 확인할 수 있습니다.
+빌드 결과는 `dist/`에 생깁니다. `npm run preview`로 확인할 수 있습니다. `npm run dev`·`npm run preview` 모두 `/`는 소개 페이지, `/app`은 캔버스입니다(Pages와 같은 주소).
 
 - 열쇠 구조: 기기마다 익명 사용자 1개(기기 열쇠)가 있고, 아이디·비밀번호는 별도 사용자(아이디 열쇠)입니다. 아이디로 로그인할 때 아이디 열쇠는 잠깐만 쓰고 기기에 저장하지 않습니다. 그래서 기기별 연결 해제가 가능합니다.
 - Supabase 대시보드 **Table Editor**에서 데이터를 직접 고칠 필요는 없습니다. 고친다면 `categories.version`도 1 올려야 기기들이 변경을 알아챕니다.
+
+## 10. 검색엔진 등록 (Google · 네이버 · Bing)
+
+배포한 뒤 한 번만 하면 됩니다. 세 곳 모두 무료이고, 소유 확인은 **HTML 태그** 방식이 가장 쉽습니다.
+`index.html` 위쪽에 세 가지 확인용 태그 자리가 주석으로 들어 있습니다. 받은 값으로 바꾸고 주석을 풀어 push하면 됩니다.
+
+```html
+<meta name="google-site-verification" content="구글에서-받은-값" />
+<meta name="naver-site-verification" content="네이버에서-받은-값" />
+<meta name="msvalidate.01" content="빙에서-받은-값" />
+```
+
+이미 들어 있는 것: 소개 페이지 제목·설명·Open Graph·구조화 데이터(SoftwareApplication, FAQ), `robots.txt`, `sitemap.xml`(/, /privacy, /licenses), `llms.txt`. `/app`(캔버스)은 `noindex`라 검색 결과에 나오지 않습니다.
+
+### 10-1. Google Search Console
+1. https://search.google.com/search-console 에 Google 계정으로 들어갑니다.
+2. **속성 추가** → **URL 접두어**에 `https://pixiemap.pages.dev/` 입력. (`pages.dev`는 DNS를 고칠 수 없어서 "도메인" 방식은 쓸 수 없습니다.)
+3. 확인 방법에서 **HTML 태그**를 고르고, `content="…"` 안의 값을 복사합니다.
+4. `index.html`의 `google-site-verification` 줄에 넣고 주석을 풀어 push → 배포가 끝나면 Search Console에서 **확인**을 누릅니다.
+5. 왼쪽 **Sitemaps** → `sitemap.xml` 입력 → **제출**. 상태가 "성공"이 되면 됩니다.
+6. 선택: 위쪽 검색창(URL 검사)에 `https://pixiemap.pages.dev/`를 넣고 **색인 생성 요청**. 처음 검색에 나오기까지 며칠~몇 주 걸릴 수 있습니다.
+
+### 10-2. 네이버 서치어드바이저
+1. https://searchadvisor.naver.com 에 네이버 계정으로 들어가 **웹마스터 도구**로 갑니다.
+2. **사이트 등록**에 `https://pixiemap.pages.dev` 입력.
+3. 소유 확인에서 **HTML 태그**를 고르고 `naver-site-verification`의 값을 복사합니다.
+4. `index.html`의 해당 줄에 넣고 주석을 풀어 push → 배포 후 **소유확인**을 누릅니다.
+5. 사이트를 고른 뒤 **요청 → 사이트맵 제출**에 `https://pixiemap.pages.dev/sitemap.xml` 입력 → 확인.
+6. 선택: **요청 → 웹 페이지 수집**에 `https://pixiemap.pages.dev/` 입력. **검증 → robots.txt**에서 수집이 허용되는지도 볼 수 있습니다.
+
+### 10-3. Bing 웹마스터 도구
+1. https://www.bing.com/webmasters 에 Microsoft(또는 Google) 계정으로 들어갑니다.
+2. 10-1을 먼저 했다면 **Google Search Console에서 가져오기**가 가장 간단합니다. 사이트와 사이트맵이 함께 넘어오고 따로 소유 확인이 필요 없습니다.
+3. 직접 추가한다면: **사이트 추가** → `https://pixiemap.pages.dev/` → **HTML 메타 태그** 방식 → `msvalidate.01` 값을 `index.html`에 넣고 push → **확인**.
+4. 왼쪽 **Sitemaps** → `https://pixiemap.pages.dev/sitemap.xml` 제출.
+- Bing 색인은 Bing 검색 말고도 Bing을 쓰는 다른 검색·AI 서비스에서 쓰일 수 있어서 함께 등록해 두는 것이 좋습니다.
+
+### 10-4. 바꾼 뒤에
+- 소개 글이나 FAQ를 고치면 `index.html`의 화면 글과 구조화 데이터(`application/ld+json`)의 질문·답을 **같이** 고칩니다(`npm test`가 둘이 같은지 검사).
+- 페이지를 새로 만들거나 크게 바꾸면 `public/sitemap.xml`의 `lastmod` 날짜를 고칩니다.
+- 링크 미리보기 이미지는 `public/og.png`(1200×630). 카카오톡·페이스북은 미리보기를 캐시하므로 바꾼 뒤에는 각 서비스의 캐시 초기화 도구를 쓰면 바로 반영됩니다.

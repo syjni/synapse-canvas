@@ -9,7 +9,11 @@ function App() {
   const [st, setSt] = useState<{ state: Persisted; fresh: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
-    loadAll().then(setSt, e => setErr(String(e && e.message ? e.message : e)));
+    loadAll().then(r => {
+      // 소개 페이지(/)가 "이미 쓰던 사람"을 바로 /app으로 보내기 위한 표시
+      try { localStorage.setItem('pixiemap-used', '1'); } catch { /* 저장 불가 환경 */ }
+      setSt(r);
+    }, e => setErr(String(e && e.message ? e.message : e)));
   }, []);
   if (err) return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF9C8F', fontFamily: 'GalmuriMono11, monospace', fontSize: 12, padding: 24, textAlign: 'center' }}>

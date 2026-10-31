@@ -2,19 +2,156 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual" />
-    <title>PixieMap</title>
-    <meta name="description" content="상자를 뉴런처럼 이어 생각을 정리하는 무한 캔버스" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PixieMap — 감성 가득한 무료 로파이 마인드맵</title>
+    <meta name="description" content="어두운 캔버스 위에 생각을 상자로 놓고 뉴런처럼 이어 정리하는 무료 마인드맵이에요. 픽셀 폰트와 잔잔한 노이즈가 만드는 예쁜 로파이 감성을 로그인 없이 바로 써 보세요." />
+    <link rel="canonical" href="https://pixiemap.pages.dev/" />
     <meta name="theme-color" content="#050509" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PixieMap" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
+
+    <!-- 검색엔진 소유 확인: 등록할 때 받은 값으로 주석을 풀어 넣으세요 (DEPLOY.md 10단계)
+    <meta name="google-site-verification" content="여기에-구글-값" />
+    <meta name="naver-site-verification" content="여기에-네이버-값" />
+    <meta name="msvalidate.01" content="여기에-빙-값" />
+    -->
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PixieMap" />
+    <meta property="og:title" content="PixieMap — 감성 가득한 무료 로파이 마인드맵" />
+    <meta property="og:description" content="생각을 상자로 놓고 뉴런처럼 이어 정리하는 예쁜 무료 마인드맵. 로그인 없이 바로 시작해요." />
+    <meta property="og:url" content="https://pixiemap.pages.dev/" />
+    <meta property="og:image" content="https://pixiemap.pages.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="어두운 캔버스 위에 픽셀 폰트 글 상자들이 곡선으로 이어진 PixieMap 화면" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PixieMap — 감성 가득한 무료 로파이 마인드맵" />
+    <meta name="twitter:description" content="생각을 상자로 놓고 뉴런처럼 이어 정리하는 예쁜 무료 마인드맵. 로그인 없이 바로 시작해요." />
+    <meta name="twitter:image" content="https://pixiemap.pages.dev/og.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "PixieMap",
+          "url": "https://pixiemap.pages.dev/",
+          "image": "https://pixiemap.pages.dev/og.png",
+          "applicationCategory": "ProductivityApplication",
+          "operatingSystem": "Web, Windows, iOS, Android",
+          "inLanguage": "ko",
+          "description": "어두운 캔버스 위에 생각을 상자로 놓고 뉴런처럼 이어 정리하는 무료 로파이 감성 마인드맵. 로그인 없이 바로 쓰고, 맵은 기기에 저장되며 원하면 기기 간 동기화할 수 있습니다.",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            { "@type": "Question", "name": "PixieMap은 무료인가요?", "acceptedAnswer": { "@type": "Answer", "text": "네, 모든 기능을 무료로 쓸 수 있어요. 결제나 구독은 없습니다." } },
+            { "@type": "Question", "name": "회원가입을 해야 쓸 수 있나요?", "acceptedAnswer": { "@type": "Answer", "text": "아니요. 열자마자 바로 쓸 수 있어요. 여러 기기에서 같은 맵을 쓰고 싶을 때만 아이디를 만들면 됩니다." } },
+            { "@type": "Question", "name": "내가 만든 맵은 어디에 저장되나요?", "acceptedAnswer": { "@type": "Answer", "text": "기본적으로 지금 쓰는 기기의 브라우저 저장소에만 저장되고 서버로 보내지 않아요. 동기화를 켜면 내 보관함(서버)에도 저장되며, 자세한 내용은 개인정보처리방침에 있어요." } },
+            { "@type": "Question", "name": "휴대폰이나 아이패드에서도 쓸 수 있나요?", "acceptedAnswer": { "@type": "Answer", "text": "네. 브라우저에서 열고 홈 화면에 추가하면 앱처럼 쓸 수 있어요. 손가락으로 화면을 옮기고 두 손가락으로 확대하며, 애플 펜슬로 바로 그릴 수 있어요. Windows PC에도 앱으로 설치할 수 있습니다." } },
+            { "@type": "Question", "name": "인터넷이 없어도 쓸 수 있나요?", "acceptedAnswer": { "@type": "Answer", "text": "네. 한 번 열어 두면 인터넷 없이도 열고 편집할 수 있어요. 동기화를 켰다면 다시 연결될 때 자동으로 맞춰집니다." } }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <!-- 이미 이 기기에서 앱을 쓰던 사람·홈 화면 앱·기기 연결 QR은 바로 캔버스로. 처음 온 사람만 소개 페이지를 본다 (?intro면 항상 소개) -->
+    <script>
+      (function () {
+        var d = document.documentElement; d.className += ' js';
+        try {
+          if (/[?&]intro\b/.test(location.search)) return;
+          var go = function () { d.className += ' leaving'; location.replace('app' + location.hash); };
+          if (/pair=/.test(location.hash) || matchMedia('(display-mode: standalone)').matches) return go();
+          if (localStorage.getItem('pixiemap-used') === '1' || localStorage.getItem('synapse-canvas-v1')) return go();
+          // 이 표시가 생기기 전부터 쓰던 기기: 저장소(IndexedDB)가 있는지로 판단
+          if (indexedDB.databases) {
+            d.className += ' checking';
+            var done = function () { d.className = d.className.replace(' checking', ''); };
+            setTimeout(done, 400);
+            indexedDB.databases().then(function (l) {
+              for (var i = 0; i < l.length; i++) if (l[i].name === 'synapse-canvas') return go();
+              done();
+            }, done);
+          }
+        } catch (e) { /* 저장소를 못 쓰는 환경 → 소개 페이지 */ }
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <canvas id="dust" aria-hidden="true"></canvas>
+    <div class="haze" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="hero">
+      <h1 class="logo"><i></i>PIXIEMAP</h1>
+      <p class="tag">생각을 잇는 로파이 마인드맵</p>
+      <a class="btn" href="app">시작하기</a>
+      <a class="scroll" href="#about" aria-label="아래로 스크롤해서 더 알아보기">scroll ↓</a>
+    </header>
+
+    <main>
+      <section id="about" class="rise">
+        <h2 class="sr">PixieMap 소개</h2>
+        <p class="lead">PixieMap은 어두운 캔버스 위에 생각을 상자로 놓고, 뉴런처럼 이어서 정리하는 무료 마인드맵이에요.</p>
+        <p>떠오르는 대로 상자를 두고 선으로 잇다 보면 흩어진 생각이 하나의 지도가 돼요. 마음, 아이디어, 일정처럼 주제마다 카테고리를 나눠 둘 수 있어요.</p>
+      </section>
+
+      <figure class="shot rise">
+        <img src="screen.webp" width="1440" height="900" loading="lazy" decoding="async"
+          alt="PixieMap 캔버스 화면: 어두운 배경에 '오늘의 마음', '감사한 것', '걱정' 같은 픽셀 폰트 글 상자들이 가운데 상자에서 뉴런 모양 곡선으로 이어져 있고, 위에는 Mind·Ideas·Schedule 카테고리 탭, 왼쪽에는 도구 막대가 있다" />
+      </figure>
+
+      <section class="rise">
+        <h2>이런 점이 좋아요</h2>
+        <p>회원가입이나 로그인 없이 열자마자 바로 쓸 수 있어요.</p>
+        <p>맵은 기본적으로 지금 쓰는 기기 안에만 저장돼요.</p>
+        <p>원하면 아이디 하나로 여러 기기의 맵을 똑같이 맞출 수 있어요.</p>
+        <p>PC, 아이패드, 휴대폰에 앱처럼 설치해 인터넷 없이도 열 수 있어요.</p>
+        <p>갈무리 픽셀 폰트와 잔잔한 노이즈가 만드는 로파이 감성이 있어요.</p>
+      </section>
+
+      <section class="rise faq">
+        <h2>자주 묻는 질문</h2>
+        <details>
+          <summary>PixieMap은 무료인가요?</summary>
+          <p>네, 모든 기능을 무료로 쓸 수 있어요. 결제나 구독은 없습니다.</p>
+        </details>
+        <details>
+          <summary>회원가입을 해야 쓸 수 있나요?</summary>
+          <p>아니요. 열자마자 바로 쓸 수 있어요. 여러 기기에서 같은 맵을 쓰고 싶을 때만 아이디를 만들면 됩니다.</p>
+        </details>
+        <details>
+          <summary>내가 만든 맵은 어디에 저장되나요?</summary>
+          <p>기본적으로 지금 쓰는 기기의 브라우저 저장소에만 저장되고 서버로 보내지 않아요. 동기화를 켜면 내 보관함(서버)에도 저장되며, 자세한 내용은 <a href="privacy">개인정보처리방침</a>에 있어요.</p>
+        </details>
+        <details>
+          <summary>휴대폰이나 아이패드에서도 쓸 수 있나요?</summary>
+          <p>네. 브라우저에서 열고 홈 화면에 추가하면 앱처럼 쓸 수 있어요. 손가락으로 화면을 옮기고 두 손가락으로 확대하며, 애플 펜슬로 바로 그릴 수 있어요. Windows PC에도 앱으로 설치할 수 있습니다.</p>
+        </details>
+        <details>
+          <summary>인터넷이 없어도 쓸 수 있나요?</summary>
+          <p>네. 한 번 열어 두면 인터넷 없이도 열고 편집할 수 있어요. 동기화를 켰다면 다시 연결될 때 자동으로 맞춰집니다.</p>
+        </details>
+      </section>
+
+      <section class="rise end">
+        <a class="btn" href="app">시작하기</a>
+      </section>
+    </main>
+
+    <footer>
+      <a href="privacy">개인정보처리방침</a>
+      <a href="licenses">오픈소스 라이선스</a>
+    </footer>
+
+    <script type="module" src="/src/landing/landing.ts"></script>
   </body>
 </html>

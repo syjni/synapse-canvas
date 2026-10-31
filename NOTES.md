@@ -229,6 +229,27 @@ PGlite(WASM Postgres)에 Supabase의 `auth.uid()`, `auth.users`, `storage.object
 - 수정: `setView`가 함수를 받아 "지금까지 반영된" 위치에서 계산. 휠 이동과 Ctrl/⌘+휠 확대(`zoomAt`)가 이 방식으로 누적
 - 확인: 사용자가 보낸 실제 delta 14개를 한 번에 보내면 수정 전 (4, 0)만 이동 → 수정 후 합계 (0, −128) 그대로, 확대 5번도 곱으로 누적
 
+## 소개 페이지(/)와 앱(/app) 분리·검색엔진 설정 (추가)
+- Vite 다중 페이지: `index.html`(소개, `/`)과 `app.html`(캔버스). Cloudflare Pages는 `app.html`을 `/app`으로, `privacy.html`을 `/privacy`로 서비스하고 `.html` 주소는 확장자 없는 주소로 보낸다 → 사이트맵·canonical은 확장자 없는 주소
+  - 개발·미리보기 서버도 같은 주소가 열리도록 `scripts/pages.mjs`가 /app·/privacy·/licenses를 .html로 바꿔 준다
+  - `public/_redirects`: `/app/*` → `/app`
+- 같은 출처라 IndexedDB(`synapse-canvas`)·localStorage는 그대로. 기존 데이터가 `/app`에서 그대로 열리는 것을 확인
+- 기존 사용자 → `/app`: 소개 페이지 `<head>`의 작은 인라인 스크립트
+  - `#pair=`(기기 연결 QR), 홈 화면 앱(display-mode standalone), `pixiemap-used` 표시(앱이 시작할 때 저장), 이전 버전 localStorage → 바로 이동
+  - 표시가 없으면 `indexedDB.databases()`에 `synapse-canvas`가 있는지 확인(그 동안 최대 0.4초 화면 숨김). 없으면 소개 페이지
+  - `/?intro`면 항상 소개 페이지
+- 매니페스트: `start_url` `/app`, `scope` `/`, `id`는 그대로(`synapse-canvas` — start_url이 바뀌어도 같은 앱으로 인식). 연결 QR 주소도 `/app#pair=`
+- 서비스 워커: index·app·privacy·licenses.html을 미리 받아 두고 workbox의 cleanURLs로 `/app`·`/privacy`가 각 파일로 열린다. `og.png`는 미리 받지 않음
+- 소개 페이지: 글은 모두 정적 HTML(스크립트 없이도 보임). `src/landing/landing.ts`는 효과만
+  - 강조색 `--hl` = `oklch(.76 .13 var(--h))`, `@property --h`를 CSS 애니메이션으로 60초에 한 바퀴. 입자 캔버스는 `--h`를 0.4초마다 읽어 맞춘다. 줄여 보기 설정이면 #6DB6FF 고정·입자 정지
+  - 먼지 입자: `src/landing/dust.ts` (반경 120px 밀어내기, 스프링+감쇠로 복귀). (1 + DAMP − DAMP·SPRING)² ≥ 4·DAMP를 만족해야 튕기지 않음 — 처음 값(0.86/0.012)은 살짝 넘어가서 테스트에 걸려 0.9/0.0025로 바꿈
+  - 입자 수는 화면 넓이/7000(50~260개), devicePixelRatio 최대 2, 탭이 숨으면 정지, requestIdleCallback으로 늦게 시작
+- 검색엔진: 소개 페이지 title·description·canonical·OG/Twitter·JSON-LD(SoftwareApplication + FAQPage). FAQ 구조화 데이터는 화면의 `<details>` 글과 같아야 해서 테스트로 비교(`tests/landing.test.ts`)
+  - `/app`은 noindex(canonical은 넣지 않음 — noindex와 함께 쓰면 신호가 엇갈림). robots.txt·sitemap.xml·llms.txt, `/licenses`는 licenses 플러그인이 정적 HTML로 만든다
+- 이미지: `public/screen.webp`(앱 화면 1440×900), `public/og.png`(1200×630, 앱 화면을 어둡게 깔고 로고·문구). headless Chrome으로 `/app`을 찍고 HTML로 합성해 만들었다(스크립트는 저장소에 두지 않음 — 다시 만들 때는 같은 방식으로)
+- 확인: 새 프로필에서 첫 방문은 소개 페이지, 시작하기 → /app, 앱을 쓴 뒤 / → /app(표시만 지워도 IndexedDB로 판단), ?intro는 소개. 서버를 끄고 /, /app, /privacy, /licenses가 서비스 워커로 열리고 /app 새로고침 가능
+  - 홈 화면 앱(standalone)으로 여는 것은 실제 설치로는 확인하지 못함 — manifest start_url이 /app이고, standalone으로 / 를 열어도 /app으로 보내는 코드만 확인
+
 ## 확인하지 못한 것 / 남은 한계
 
 - **실제 Supabase로는 돌려 보지 못했습니다.** Docker Desktop이 이 PC에서 켜지지 않았고, Supabase 계정·프로젝트도 없습니다. 그래서 아래는 아직 실제 서버에서 확인하지 않았습니다.

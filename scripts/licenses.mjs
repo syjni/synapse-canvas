@@ -43,6 +43,56 @@ function info(dir) {
   };
 }
 
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// /licenses 페이지 (개인정보처리방침과 같은 모양)
+function page(list) {
+  const items = list.map(x => `
+  <section>
+    <h2>${esc(x.name)} <span class="v">${esc(x.version)} · ${esc(x.license)}</span></h2>
+    ${x.copyright.map(c => `<p class="c">${esc(c)}</p>`).join('')}
+    ${x.url ? `<p class="c"><a href="${esc(x.url)}" rel="noopener">${esc(x.url)}</a></p>` : ''}
+    ${x.text ? `<details><summary>라이선스 전문</summary><pre>${esc(x.text)}</pre></details>` : ''}
+  </section>`).join('');
+  return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>오픈소스 라이선스 — PixieMap</title>
+<meta name="description" content="무료 로파이 마인드맵 PixieMap에 쓰인 갈무리 폰트와 오픈소스 라이브러리의 저작권·라이선스 전문입니다.">
+<link rel="canonical" href="https://pixiemap.pages.dev/licenses">
+<meta name="theme-color" content="#050509">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.75 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 4px; letter-spacing: .04em; }
+  .v { color: var(--dim); font-size: 12px; letter-spacing: 0; }
+  .meta, .c { color: var(--dim); font-size: 13px; margin: 2px 0; overflow-wrap: anywhere; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; text-decoration: none; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  a { color: #B3ADFF; }
+  summary { cursor: pointer; color: var(--dim); font-size: 13px; margin-top: 6px; }
+  pre { white-space: pre-wrap; font-size: 12px; line-height: 1.6; color: var(--dim); background: rgba(217,218,240,.04); padding: 12px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./"><i></i>PIXIEMAP</a>
+  <h1>오픈소스 라이선스</h1>
+  <p class="meta">PixieMap은 아래 폰트와 오픈소스 소프트웨어를 사용합니다. 각 저작권자에게 감사드립니다.</p>
+  ${items}
+  <p class="meta" style="margin-top:32px"><a href="./">PixieMap 소개</a> · <a href="privacy">개인정보처리방침</a></p>
+</main>
+</body>
+</html>
+`;
+}
+
 // extra: 모듈 그래프로는 안 잡히는 패키지 (CSS에서 쓰는 폰트, 서비스 워커에 들어가는 workbox)
 export default function licenses(extra = []) {
   return {
@@ -62,6 +112,8 @@ export default function licenses(extra = []) {
       for (const d of dirs) { const x = info(d); byName.set(x.name, x); }
       const list = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
       this.emitFile({ type: 'asset', fileName: 'licenses.json', source: JSON.stringify(list) });
+      // 같은 내용을 검색엔진도 읽을 수 있는 정적 페이지로 (/licenses)
+      this.emitFile({ type: 'asset', fileName: 'licenses.html', source: page(list) });
     },
   };
 }

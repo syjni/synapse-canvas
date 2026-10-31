@@ -623,7 +623,7 @@ export async function loadSync(local: LocalImages): Promise<SyncService | null> 
   return service;
 }
 // 새 기기용 QR 내용: 앱 주소 + #pair=코드 (휴대폰 기본 카메라로 찍어도 앱이 코드를 받아 연결 화면을 연다)
-export const pairUrl = (code: string) => `${location.origin}${env.BASE_URL || '/'}#pair=${code}`;
+export const pairUrl = (code: string) => `${location.origin}${env.BASE_URL || '/'}app#pair=${code}`;
 export const parsePair = (s: string) => { const m = s.match(/pair=(\d{6})/) || s.match(/^\s*(\d{6})\s*$/); return m ? m[1] : null; };
 // 로컬에 없는 사진을 서버에서 받기 (BoxImage·EXPORT에서 사용). 동기화가 꺼져 있으면 null.
 export const fetchRemoteImage = (id: string) => (service ? service.fetchImage(id) : Promise.resolve(null));

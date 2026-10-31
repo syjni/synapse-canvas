@@ -1,0 +1,4 @@
+# Cloudflare Pages 주소 규칙
+# - app.html은 /app, privacy.html은 /privacy로 서비스된다(Pages 기본 동작). /app을 새로고침해도 그대로 app.html이 열린다.
+# - /app/ 아래 주소(예: 예전 북마크 /app/어딘가)는 캔버스로 보낸다
+/app/*   /app   302
