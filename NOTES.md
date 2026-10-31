@@ -183,6 +183,17 @@ PGlite(WASM Postgres)에 Supabase의 `auth.uid()`, `auth.users`, `storage.object
 - **키보드**: `[` `]`로 이전·다음. 입력칸·텍스트 편집 중에는 무시. Space keyup도 기본 동작을 막고, 창이 포커스를 잃으면 Space 상태를 풉니다.
 - 브라우저에서 PointerEvent·WheelEvent·KeyboardEvent를 직접 넣어 위 동작을 확인했습니다. 실제 트랙패드의 관성 스크롤·탭 후 끌기는 기기에서 확인이 필요합니다.
 
+## 상자 크기 조절 수정·카테고리 비우기 (추가)
+
+- **리사이즈 핸들**: 전용 처리(`onResizeDown`)로 바꿨습니다. pointerdown에서 전파를 막고 `setPointerCapture`로 드래그 끝까지 잡으며, 도구·입력 종류와
+  상관없이 항상 크기 조절입니다(우클릭·가운데 버튼은 무시). 판정 영역은 화면 기준 마우스 16px·터치 44px 이상(보이는 삼각형은 12px 그대로)이라
+  축소했을 때 핸들을 놓쳐 배경 이동이 시작되는 일을 줄였습니다. 최소 120×60, 실행 취소 스냅샷은 실제로 움직이기 시작할 때 1회.
+  - 원인 추정: 예전에는 PAN·TEXT·DRAW 도구에서 핸들이 배경으로 넘어갔고, 축소 상태에서 12px 핸들을 놓치면 이번 변경으로 배경 좌클릭이 화면 이동이 되어
+    "크기가 안 바뀌고 화면이 움직이는" 것처럼 보였을 가능성이 큽니다. SELECT 도구에서 정확히 핸들을 잡은 경우는 변경 전후 모두 동작했습니다.
+- 마우스로 누른 곳·버튼·도구 → 동작 결정은 `src/lib/input.ts`의 `mouseAction` 하나로 모았고, `tests/input.test.ts`가 우선순위(핸들 > 우클릭 전환 > 도구별)를 검사합니다.
+- **카테고리 비우기**: 설정 맨 아래 DANGER 영역 → 확인 창(이름·상자·연결선·펜 획 수, 전부/펜 획만/취소). `clearCategory`가 살아 있는 항목에 deletedAt만 찍고
+  `setData`가 스냅샷 1회 + updatedAt 스탬프. 실행 취소는 `applyTarget`이라 새 updatedAt으로 복구되어 다른 기기에도 다시 반영됩니다(`tests/clear.test.ts`).
+
 ## 확인하지 못한 것 / 남은 한계
 
 - **실제 Supabase로는 돌려 보지 못했습니다.** Docker Desktop이 이 PC에서 켜지지 않았고, Supabase 계정·프로젝트도 없습니다. 그래서 아래는 아직 실제 서버에서 확인하지 않았습니다.

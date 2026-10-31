@@ -5,7 +5,7 @@ import { md } from './lib/md';
 import { route, ports, curve, dendrite, smooth, roundPath, type Pt } from './lib/geometry';
 import {
   type Data, type Category, type Box, type Prefs, type PrefsT, type View, type Persisted,
-  tick, uid, alive, visibleCats, liveBoxes, liveLinks, liveStrokes, stampChanges, applyTarget, clockValue,
+  tick, uid, alive, visibleCats, liveBoxes, liveLinks, liveStrokes, stampChanges, applyTarget, clockValue, clearCategory,
 } from './model';
 import { saveAll, putImage, getImage, requestPersist, resetAll } from './storage';
 import { loadSync, parsePair, type SyncService, type SyncStatus } from './sync';
@@ -16,6 +16,7 @@ const Licenses = React.lazy(() => import('./ui/Licenses'));
 import { exportBackup, validateBackup, materializeBackup } from './backup';
 import { BoxImage } from './ui/BoxImage';
 import { HELP_DESKTOP, HELP_TOUCH } from './ui/help';
+import { mouseAction, type Tool } from './lib/input';
 
 // ── 디자인 상수 (dc.html) ─────────────────────────────
 const K = 0.85;              // 전역 85% 스케일
@@ -31,7 +32,6 @@ const CLICK_SLOP = 3;        // 이보다 적게 움직이면 클릭(선택 해�
 const LONG_PRESS = 480;
 const DOUBLE_TAP = 320;
 
-type Tool = 'select' | 'pan' | 'text' | 'draw' | 'connect';
 type Drag =
   | { type: 'pan'; id: number; sx: number; sy: number; ox: number; oy: number; tap?: boolean; click?: boolean; shift?: boolean; moved?: boolean }
   | { type: 'draw'; id: number }
@@ -39,12 +39,12 @@ type Drag =
   | { type: 'edge'; id: number; sx: number; sy: number; dx?: number; dy?: number }
   | { type: 'move'; id: number; sx: number; sy: number; orig: Record<string, { x: number; y: number }>; pushed?: boolean }
   | { type: 'resize'; id: number; sx: number; sy: number; box: string; ow: number; oh: number; pushed?: boolean }
-  | { type: 'boxTouch'; id: number; sx: number; sy: number; box: string; part: 'body' | 'handle' | 'resize'; consumed?: boolean; scrollEl?: HTMLElement | null; ly?: number };
+  | { type: 'boxTouch'; id: number; sx: number; sy: number; box: string; part: 'body' | 'handle'; consumed?: boolean; scrollEl?: HTMLElement | null; ly?: number };
 
 type State = {
   data: Data; prefs: Prefs; prefsT: PrefsT; views: Record<string, View>; active: string;
   tool: Tool; sel: string[]; editing: string | null; hover: string | null; connectFrom: string | null; mouseW: Pt | null;
-  settingsOpen: boolean; helpOpen: boolean; licensesOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
+  settingsOpen: boolean; helpOpen: boolean; licensesOpen: boolean; clearOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
   swipe: number; liveStroke: [number, number][] | null; space: boolean; flash: { name: string; idx: number } | null; flashOn: boolean;
   panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
@@ -92,7 +92,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     this.state = {
       data: i.data, prefs: i.prefs, prefsT: i.prefsT, views: i.views, active: i.active,
       tool: 'select', sel: [], editing: null, hover: null, connectFrom: null, mouseW: null,
-      settingsOpen: false, helpOpen: false, licensesOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
+      settingsOpen: false, helpOpen: false, licensesOpen: false, clearOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
       swipe: 0, liveStroke: null, space: false, flash: null, flashOn: false, panning: false, dragging: false,
       vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false,
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
@@ -228,6 +228,12 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       (Object.keys(p) as (keyof Prefs)[]).forEach(k => { if (s.prefs[k] !== p[k]) prefsT[k] = tick(); });
       return { prefs: { ...s.prefs, ...p }, prefsT };
     }, () => this.scheduleSave());
+  }
+  // 현재 카테고리 비우기: 지우기 전 스냅샷 1회(setData) → Ctrl/⌘+Z 한 번으로 복구. 항목은 deletedAt만 기록(clearCategory)
+  clearCat(what: 'all' | 'strokes') {
+    const id = this.cat.id;
+    this.setData(d => ({ ...d, cats: d.cats.map(c => (c.id === id ? clearCategory(c, what) : c)) }));
+    this.setState(s => ({ clearOpen: false, editing: null, connectFrom: null, sel: what === 'all' ? [] : s.sel }));
   }
   // 로그아웃 "이 기기 데이터도 지우기": 저장을 멈추고 기기 저장소를 초기 예시 데이터로 바꾼 뒤 다시 시작
   wiping = false;
@@ -481,16 +487,19 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, tap: true };
       return;
     }
-    // 우클릭 드래그: 도구와 상관없이 좌우로 끌어 카테고리 전환 (상자 위에서 눌러도 여기로 온다)
-    if (e.button === 2) { this.drag = { type: 'swipe', id, sx: e.clientX, sy: e.clientY }; return; }
-    if (e.button !== 0 && e.button !== 1) return;
-    if (e.button === 1 || space || tool === 'pan') { e.preventDefault(); this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y }; this.setState({ panning: true }); return; }
-    if (tool === 'draw') { startDraw(); return; }
-    if (tool === 'text') { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
-    if (tool === 'connect') { this.setState({ connectFrom: null }); return; }
-    // SELECT 도구로 빈 곳 좌클릭: 3px 넘게 끌면 화면 이동, 아니면 클릭(선택 해제)
-    this.setState({ editing: null });
-    this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, click: true, shift: e.shiftKey };
+    switch (mouseAction({ part: 'bg', button: e.button, tool, space })) {
+      // 우클릭 드래그: 도구와 상관없이 좌우로 끌어 카테고리 전환 (상자 위에서 눌러도 여기로 온다)
+      case 'swipe': this.drag = { type: 'swipe', id, sx: e.clientX, sy: e.clientY }; return;
+      case 'pan': e.preventDefault(); this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y }; this.setState({ panning: true }); return;
+      case 'draw': startDraw(); return;
+      case 'text': { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
+      case 'connect-cancel': this.setState({ connectFrom: null }); return;
+      // SELECT 도구로 빈 곳 좌클릭: 3px 넘게 끌면 화면 이동, 아니면 클릭(선택 해제)
+      case 'click-pan':
+        this.setState({ editing: null });
+        this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, click: true, shift: e.shiftKey };
+        return;
+    }
   }
   // 터치 탭(움직임 없음) 처리: 도구별로 마우스 클릭과 같은 결과
   bgTap(e: PointerEvent) {
@@ -532,9 +541,6 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         const ns = this.boxSelect(box.id, false);
         const orig: Record<string, { x: number; y: number }> = {}; this.cat.boxes.forEach(x => { if (ns.includes(x.id)) orig[x.id] = { x: x.x, y: x.y }; });
         this.drag = { type: 'move', id: d.id, sx: d.sx, sy: d.sy, orig };
-      } else if (d.part === 'resize') {
-        this.setState({ sel: [box.id] });
-        this.drag = { type: 'resize', id: d.id, sx: d.sx, sy: d.sy, box: box.id, ow: box.w, oh: box.h };
       } else if (d.scrollEl && d.scrollEl.scrollHeight > d.scrollEl.clientHeight + 1 && Math.abs(dy) > Math.abs(dx)) {
         d.consumed = true; d.ly = e.clientY;
         return;
@@ -631,7 +637,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
     if (e.key === 'Escape' && (this.drag?.type === 'swipe' || this.wAcc)) { this.drag = null; this.wAcc = 0; this.setState({ swipe: 0 }); return; }
     if (e.key === '[' || e.key === ']') { e.preventDefault(); this.go(e.key === ']' ? 1 : -1); return; }
-    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false }); return; }
+    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false, clearOpen: false }); return; }
     if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
     const map: Record<string, Tool> = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
     const k = e.key.toLowerCase();
@@ -647,13 +653,30 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   passThrough() { const { tool, space } = this.state; return space || tool === 'pan' || tool === 'draw' || tool === 'text'; }
 
   // 상자 위 포인터: 마우스/펜은 dc.html과 같이 즉시 처리, 터치는 탭·길게 누르기·끌기를 구분
-  onBoxDown(e: React.PointerEvent, b: Box, part: 'body' | 'handle' | 'resize') {
-    if (e.pointerType === 'mouse' && e.button === 2) return;   // 우클릭 드래그는 배경 핸들러(카테고리 전환)로
+  onBoxDown(e: React.PointerEvent, b: Box, part: 'body' | 'handle') {
     if (this.touchBlocked(e)) return;
     const s = this.state;
-    if (e.pointerType === 'pen' && !s.space && s.tool !== 'pan' && s.tool !== 'select' && s.tool !== 'connect') return;
+    if (e.pointerType !== 'touch') {
+      // 펜은 SELECT·PAN·LINK 도구가 아니면 상자 위에서도 그리기 (배경으로 넘김)
+      if (e.pointerType === 'pen' && !s.space && s.tool !== 'pan' && s.tool !== 'select' && s.tool !== 'connect') return;
+      const act = mouseAction({ part, button: e.button, tool: s.tool, space: s.space });
+      if (act === 'bubble') return;
+      e.stopPropagation();
+      if (act === 'connect') {
+        if (!s.connectFrom) this.setState({ connectFrom: b.id, mouseW: null });
+        else { this.addLink(s.connectFrom, b.id); this.setState({ connectFrom: null }); }
+      } else if (act === 'select') {
+        if (s.editing !== b.id) this.boxSelect(b.id, e.shiftKey);
+      } else if (act === 'move') {
+        const ns = this.boxSelect(b.id, e.shiftKey);
+        if (!ns.includes(b.id)) return;
+        const orig: Record<string, { x: number; y: number }> = {}; this.cat.boxes.forEach(x => { if (ns.includes(x.id)) orig[x.id] = { x: x.x, y: x.y }; });
+        this.drag = { type: 'move', id: e.pointerId, sx: e.clientX, sy: e.clientY, orig };
+      }
+      return;
+    }
     if (this.passThrough()) return;
-    if (e.pointerType === 'touch' && this.penSeen && s.tool === 'draw') return;
+    if (this.penSeen && s.tool === 'draw') return;
     e.stopPropagation();
     if (s.tool === 'connect') {
       if (!s.connectFrom) this.setState({ connectFrom: b.id, mouseW: null });
@@ -661,31 +684,29 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       return;
     }
     if (s.editing === b.id && part === 'body') return;
-    if (e.pointerType === 'touch') {
-      const scrollEl = (e.target as Element).closest<HTMLElement>('[data-scroll]');
-      this.drag = { type: 'boxTouch', id: e.pointerId, sx: e.clientX, sy: e.clientY, box: b.id, part, scrollEl };
-      clearTimeout(this.longT);
-      if (part !== 'resize') {
-        // 길게 누르기 = 다중 선택 토글 (Shift+클릭과 같음)
-        this.longT = window.setTimeout(() => {
-          const d = this.drag; if (!d || d.type !== 'boxTouch' || d.box !== b.id) return;
-          d.consumed = true; this.lastTap = null;
-          this.boxSelect(b.id, true);
-          navigator.vibrate?.(12);
-        }, LONG_PRESS);
-      }
-      return;
-    }
-    if (e.button !== 0) return;
-    if (part === 'body') { this.boxSelect(b.id, e.shiftKey); return; }
-    if (part === 'handle') {
-      const ns = this.boxSelect(b.id, e.shiftKey);
-      if (!ns.includes(b.id)) return;
-      const orig: Record<string, { x: number; y: number }> = {}; this.cat.boxes.forEach(x => { if (ns.includes(x.id)) orig[x.id] = { x: x.x, y: x.y }; });
-      this.drag = { type: 'move', id: e.pointerId, sx: e.clientX, sy: e.clientY, orig };
-      return;
-    }
+    const scrollEl = (e.target as Element).closest<HTMLElement>('[data-scroll]');
+    this.drag = { type: 'boxTouch', id: e.pointerId, sx: e.clientX, sy: e.clientY, box: b.id, part, scrollEl };
+    clearTimeout(this.longT);
+    // 길게 누르기 = 다중 선택 토글 (Shift+클릭과 같음)
+    this.longT = window.setTimeout(() => {
+      const d = this.drag; if (!d || d.type !== 'boxTouch' || d.box !== b.id) return;
+      d.consumed = true; this.lastTap = null;
+      this.boxSelect(b.id, true);
+      navigator.vibrate?.(12);
+    }, LONG_PRESS);
+  }
+
+  // 우하단 리사이즈 핸들: 도구·입력 종류와 상관없이 항상 크기 조절. 캔버스 이동·상자 이동·카테고리 전환보다 먼저 잡고
+  // 포인터를 이 핸들에 붙잡아(setPointerCapture) 드래그가 끝날 때까지 다른 요소가 가로채지 못하게 한다.
+  onResizeDown(e: React.PointerEvent, b: Box) {
+    e.stopPropagation();
+    if (this.touchBlocked(e)) return;
+    if (mouseAction({ part: 'resize', button: e.button, tool: this.state.tool, space: this.state.space }) !== 'resize') { e.preventDefault(); return; }
+    e.preventDefault();
+    clearTimeout(this.longT);
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* 캡처를 못 해도 창 단위 이벤트로 동작 */ }
     this.setState({ sel: [b.id] });
+    // 실행 취소 스냅샷은 실제로 움직이기 시작할 때 1회 (onMove의 pushed)
     this.drag = { type: 'resize', id: e.pointerId, sx: e.clientX, sy: e.clientY, box: b.id, ow: b.w, oh: b.h };
   }
 
@@ -776,9 +797,10 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const big = s.touchMode;
     const hitH = big ? Math.max(18, 44 / ze) : 18;
     const above = (hitH - 18) / 2, below = Math.max(0, Math.min((hitH - 18) / 2, b.h / 2 - 18));
-    const rs = big ? Math.max(12, 44 / ze) : 12, rOff = (rs - 12) / 2;
+    // 리사이즈 판정 영역: 터치는 화면 기준 44px, 마우스도 축소했을 때 너무 작아지지 않게 화면 기준 16px 이상
+    const rs = Math.max(12, (big ? 44 : 16) / ze), rOff = (rs - 12) / 2;
     const handleDown = (e: React.PointerEvent) => this.onBoxDown(e, b, 'handle');
-    const resizeDown = (e: React.PointerEvent) => this.onBoxDown(e, b, 'resize');
+    const resizeDown = (e: React.PointerEvent) => this.onResizeDown(e, b);
     return (
       <div key={b.id} style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: lit ? 10 : 2 }}
         onPointerDown={e => this.onBoxDown(e, b, 'body')}
@@ -802,9 +824,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           <div style={{ position: 'absolute', left: -6, top: -6, width: 6, height: 6, borderLeft: `1px solid ${tick6}`, borderTop: `1px solid ${tick6}` }} />
           <div style={{ position: 'absolute', right: -6, top: -6, width: 6, height: 6, borderRight: `1px solid ${tick6}`, borderTop: `1px solid ${tick6}` }} />
           <div style={{ position: 'absolute', left: -6, bottom: -6, width: 6, height: 6, borderLeft: `1px solid ${tick6}`, borderBottom: `1px solid ${tick6}` }} />
-          <div onPointerDown={resizeDown} style={{ position: 'absolute', right: 0, bottom: 0, width: 12, height: 12, cursor: 'nwse-resize', background: `linear-gradient(135deg, transparent 55%, ${nc} 55%)` }} />
+          <div style={{ position: 'absolute', right: 0, bottom: 0, width: 12, height: 12, pointerEvents: 'none', background: `linear-gradient(135deg, transparent 55%, ${nc} 55%)` }} />
           {big && <div onPointerDown={handleDown} style={{ position: 'absolute', left: 0, right: 0, top: -above, height: 18 + above + below, cursor: 'move' }} />}
-          {big && <div onPointerDown={resizeDown} style={{ position: 'absolute', right: -rOff, bottom: -rOff, width: rs, height: rs, cursor: 'nwse-resize' }} />}
+          <div data-resize="1" onPointerDown={resizeDown} style={{ position: 'absolute', right: -rOff, bottom: -rOff, width: rs, height: rs, cursor: 'nwse-resize', touchAction: 'none', zIndex: 1 }} />
         </div>
       </div>
     );
@@ -885,6 +907,10 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} /></React.Suspense>
           <div onClick={() => this.setState({ licensesOpen: true })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: dash, paddingTop: 14, minHeight: 30, fontSize: 11, color: 'rgba(217,218,240,.6)', cursor: 'pointer' }}>
             <span>오픈소스 라이선스</span><span style={{ color: nc }}>›</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px dashed rgba(255,156,143,.35)', paddingTop: 14 }}>
+            <div style={{ fontSize: 11, letterSpacing: '.16em', color: '#FF9C8F' }}>DANGER / 위험 동작</div>
+            <button onClick={() => this.setState({ clearOpen: true })} style={{ height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>이 카테고리 비우기</button>
           </div>
         </div>
       </div>
@@ -1124,6 +1150,39 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             </div>
           </div>
         )}
+
+        {s.clearOpen && (() => {
+          const cc = this.cat, nb = liveBoxes(cc).length, nl = liveLinks(cc).length, ns = liveStrokes(cc).length;
+          const danger = '#FF9C8F';
+          const cbtn = (label: string, onClick: () => void, kind: 'fill' | 'line' | 'ghost', disabled = false) => (
+            <button disabled={disabled} onClick={onClick} style={{ flex: 1, minWidth: 0, height: touch ? 44 : 34, padding: '0 8px', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1, fontFamily: "'GalmuriMono11',monospace", fontSize: 12,
+              background: kind === 'fill' ? danger : 'transparent', color: kind === 'fill' ? '#05060B' : kind === 'line' ? danger : 'rgba(217,218,240,.7)', border: kind === 'fill' ? 'none' : kind === 'line' ? '1px solid rgba(255,156,143,.5)' : '1px solid rgba(217,218,240,.2)' }}>{label}</button>
+          );
+          return (
+            <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ clearOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 42 }}>
+              <div role="dialog" aria-label="이 카테고리 비우기" onPointerDown={stop} style={{ zoom: K, width: 'min(400px,100%)', background: 'rgba(6,7,13,.97)', border: '1px solid rgba(255,156,143,.45)', boxShadow: '0 0 40px rgba(255,156,143,.12)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,156,143,.3)', fontSize: 11, letterSpacing: '.16em', color: danger }}>CLEAR / 이 카테고리 비우기</div>
+                <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontSize: 13, color: '#EDEEFA' }}>‘{cc.name}’</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: 'rgba(217,218,240,.1)', border: '1px solid rgba(217,218,240,.1)' }}>
+                    {([['상자', nb], ['연결선', nl], ['펜 획', ns]] as const).map(([k, n]) => (
+                      <div key={k} style={{ background: '#07080E', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ fontSize: 10, color: 'rgba(217,218,240,.55)' }}>{k}</span>
+                        <span style={{ fontFamily: "'GalmuriMono11',monospace", fontSize: 16, color: n ? '#EDEEFA' : 'rgba(217,218,240,.35)' }}>{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>카테고리 이름과 탭은 남습니다. 동기화 중이면 다른 기기에서도 지워집니다. 실행 취소(Ctrl/⌘+Z 또는 UNDO)로 한 번에 되돌릴 수 있어요.</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {cbtn('전부 지우기', () => this.clearCat('all'), 'fill', nb + nl + ns === 0)}
+                    {cbtn('펜 획만 지우기', () => this.clearCat('strokes'), 'line', ns === 0)}
+                    {cbtn('취소', () => this.setState({ clearOpen: false }), 'ghost')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {s.licensesOpen && (
           <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ licensesOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 41 }}>

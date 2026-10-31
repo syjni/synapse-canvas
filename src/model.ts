@@ -142,6 +142,14 @@ export function applyTarget(cur: Data, target: Data): Data {
   return stampChanges(cur, { cats: [...cats, ...extra] });
 }
 
+// ── 카테고리 비우기 ──────────────────────────────────
+// 배열에서 빼지 않고 살아 있는 항목에 deletedAt만 찍는다 → 동기화로 다른 기기에도 삭제가 전파된다.
+// 카테고리 자체(이름·순서)는 그대로. 결과는 setData(stampChanges)를 거쳐 updatedAt을 받는다.
+export function clearCategory(c: Category, what: 'all' | 'strokes', t = tick()): Category {
+  const kill = <T extends Stamp>(xs: T[]) => xs.map(x => (alive(x) ? { ...x, deletedAt: t } : x));
+  return what === 'all' ? { ...c, boxes: kill(c.boxes), links: kill(c.links), strokes: kill(c.strokes) } : { ...c, strokes: kill(c.strokes) };
+}
+
 // ── 오래된 툼스톤 정리 ───────────────────────────────
 export function purgeTombstones(d: Data, now = Date.now()): Data {
   const keep = <T extends Stamp>(x: T) => x.deletedAt == null || now - x.deletedAt < TOMBSTONE_TTL;
