@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+<title>Synapse Canvas</title>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#07080E"/><rect x="30" y="30" width="16" height="16" fill="#7FA6F0"/><rect x="56" y="54" width="16" height="16" fill="#9C95F0"/><rect x="46" y="37" width="18" height="2" fill="#7FA6F0"/><rect x="62" y="37" width="2" height="18" fill="#9C95F0"/></svg></template>
+<style>html,body{margin:0;height:100%;background:#050509;overflow:hidden}a{color:#B3ADFF}a:hover{color:#E4E2FF}::selection{background:#5B7BE6;color:#fff}input,textarea,button{outline:none}textarea::placeholder{color:rgba(217,218,240,.3)}::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:rgba(217,218,240,.18)}[data-tabs]::-webkit-scrollbar{display:none}</style>
+</helmet>
+<div style="position:fixed;inset:0;background:#050509;overflow:hidden;cursor:{{cursor}};user-select:none;font-family:'GalmuriMono11','Galmuri11',monospace;color:#D9DAF0" onMouseDown="{{onBgDown}}" onDoubleClick="{{onBgDbl}}">
+  <div style="position:absolute;width:62vw;height:62vw;left:-18vw;top:-24vw;border-radius:50%;background:{{haze1}};filter:blur(90px);opacity:.2;pointer-events:none"></div>
+  <div style="position:absolute;width:55vw;height:55vw;right:-20vw;bottom:-26vw;border-radius:50%;background:{{haze2}};filter:blur(100px);opacity:.18;pointer-events:none"></div>
+  <sc-if value="{{showGrid}}" hint-placeholder-val="{{true}}">
+    <div style="position:absolute;inset:0;background-image:radial-gradient(rgba(220,222,255,.10) 1px, transparent 1.2px);background-size:{{gridSize}};background-position:{{gridPos}};pointer-events:none"></div>
+  </sc-if>
+
+  <div style="position:absolute;inset:0;transform:translateX({{swipeShift}}px);opacity:{{swipeFade}};pointer-events:none">
+    <div style="position:absolute;left:0;top:0;transform:{{worldTransform}};transform-origin:0 0;pointer-events:auto">
+      {{edgeLayer}}
+      <sc-for list="{{boxes}}" as="b" hint-placeholder-count="4">
+        <div style="position:absolute;left:{{b.x}}px;top:{{b.y}}px;width:{{b.w}}px;height:{{b.h}}px;z-index:{{b.z}}" onMouseDown="{{b.onDown}}" onDoubleClick="{{b.onDbl}}" onMouseEnter="{{b.onEnter}}" onMouseLeave="{{b.onLeave}}">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;transform:scale({{b.scale}});transition:transform .2s cubic-bezier(.2,.9,.3,1.3), box-shadow .2s, border-color .2s;background:{{b.bg}};border:1px solid {{b.border}};border-radius:{{radius}};box-shadow:{{b.shadow}};outline:{{b.outline}};outline-offset:5px;backdrop-filter:blur(2px)">
+            <div onMouseDown="{{b.onHandle}}" style="height:18px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 8px;cursor:move;border-bottom:1px solid {{b.line}};font-family:'GalmuriMono9',monospace;font-size:9px;letter-spacing:.12em;color:{{b.headFg}};background:{{b.headBg}};opacity:{{b.handleOp}};transition:opacity .2s, background .2s">
+              <span>{{b.tag}}</span><span style="letter-spacing:2px;opacity:.6">::::</span><span>{{b.state}}</span>
+            </div>
+            <sc-if value="{{b.editing}}" hint-placeholder-val="{{false}}">
+              <textarea data-edit-ta="1" data-scroll="1" value="{{b.text}}" onChange="{{b.onInput}}" onKeyDown="{{b.onKey}}" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" placeholder="# 제목&#10;- 목록&#10;**볼드** *기울임*" spellcheck="false" style="flex:1;min-height:0;resize:none;background:rgba(0,0,0,.35);border:none;padding:10px 12px;margin:0;color:#E9EAF7;font-family:'GalmuriMono11',monospace;font-size:12px;line-height:1.55;caret-color:{{b.tagColor}};user-select:text"></textarea>
+            </sc-if>
+            <sc-if value="{{b.showBody}}" hint-placeholder-val="{{true}}">{{b.body}}</sc-if>
+            <sc-if value="{{b.isImage}}" hint-placeholder-val="{{false}}">{{b.img}}</sc-if>
+            <div style="position:absolute;left:-6px;top:-6px;width:6px;height:6px;border-left:1px solid {{b.tick}};border-top:1px solid {{b.tick}}"></div>
+            <div style="position:absolute;right:-6px;top:-6px;width:6px;height:6px;border-right:1px solid {{b.tick}};border-top:1px solid {{b.tick}}"></div>
+            <div style="position:absolute;left:-6px;bottom:-6px;width:6px;height:6px;border-left:1px solid {{b.tick}};border-bottom:1px solid {{b.tick}}"></div>
+            <div onMouseDown="{{b.onResize}}" style="position:absolute;right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize;background:linear-gradient(135deg, transparent 55%, {{b.tagColor}} 55%)"></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <canvas ref="{{noiseRef}}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:{{grain}};filter:blur(0.6px);mix-blend-mode:screen"></canvas>
+  <div style="position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0px, rgba(0,0,0,.22) 1px, transparent 1px, transparent 3px)"></div>
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%)"></div>
+
+  <sc-if value="{{swipeVisible}}" hint-placeholder-val="{{false}}">
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none">
+      <div style="font-family:'GalmuriMono11',monospace;font-size:13px;letter-spacing:.2em;color:{{accent}}">{{swipeLabel}}</div>
+      <div style="width:180px;height:3px;background:rgba(217,218,240,.12)"><div style="height:3px;width:{{swipeProgress}};background:{{accent}};box-shadow:0 0 10px {{accent}}"></div></div>
+    </div>
+  </sc-if>
+  <div style="position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);pointer-events:none;opacity:{{flashOpacity}};transition:opacity .6s;display:flex;flex-direction:column;align-items:center;gap:6px">
+    <div style="font-family:'GalmuriMono9',monospace;font-size:11px;letter-spacing:.3em;color:{{accent}}">{{flashIndex}}</div>
+    <div style="font-family:'Galmuri11',monospace;font-size:44px;color:#EDEEFA;text-shadow:0 0 24px {{accentGlow}}">{{flashName}}</div>
+  </div>
+
+  <div data-ui="1" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" style="zoom:.85;position:absolute;left:0;right:0;top:0;height:52px;display:flex;align-items:center;gap:18px;padding:0 18px;background:transparent">
+    <div style="display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:.18em;color:{{accent}};flex:none">
+      <span style="width:8px;height:8px;background:{{accent}};box-shadow:0 0 10px {{accent}}"></span>SYNAPSE
+    </div>
+    <div data-tabs="1" style="display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="6">
+        <div draggable="true" onDragStart="{{t.onDragStart}}" onDragOver="{{t.onDragOver}}" onDrop="{{t.onDrop}}" onClick="{{t.onClick}}" onDoubleClick="{{t.onDbl}}" style="flex:none;display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;background:{{t.bg}};color:{{t.fg}};border:1px solid {{t.border}};box-shadow:{{t.shadow}}">
+          <span style="font-family:'GalmuriMono9',monospace;font-size:9px;opacity:.7">{{t.num}}</span>
+          <sc-if value="{{t.renaming}}" hint-placeholder-val="{{false}}">
+            <input data-rename="1" value="{{t.name}}" onChange="{{t.onRename}}" onKeyDown="{{t.onRenameKey}}" onBlur="{{endRename}}" onClick="{{stop}}" style="width:{{t.inputW}};background:transparent;border:none;border-bottom:1px dashed currentColor;color:inherit;font-family:'GalmuriMono11',monospace;font-size:12px;padding:0">
+          </sc-if>
+          <sc-if value="{{t.showName}}" hint-placeholder-val="{{true}}"><span style="font-size:12px;white-space:nowrap">{{t.name}}</span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <div style="font-family:'GalmuriMono9',monospace;font-size:10px;letter-spacing:.12em;color:{{saveColor}};display:flex;gap:6px;align-items:center;margin-right:6px;white-space:nowrap;flex:none"><span style="width:6px;height:6px;border-radius:50%;background:{{saveColor}};box-shadow:0 0 8px {{saveColor}}"></span>{{saveStatus}}</div>
+      <button onClick="{{doExport}}" style="white-space:nowrap;flex:none;font-family:'GalmuriMono11',monospace;font-size:11px;letter-spacing:.08em;padding:7px 11px;background:transparent;color:#D9DAF0;border:1px solid rgba(217,218,240,.25);cursor:pointer" style-hover="border-color:#D9DAF0">EXPORT ↓</button>
+      <button onClick="{{doImport}}" style="white-space:nowrap;flex:none;font-family:'GalmuriMono11',monospace;font-size:11px;letter-spacing:.08em;padding:7px 11px;background:transparent;color:#D9DAF0;border:1px solid rgba(217,218,240,.25);cursor:pointer" style-hover="border-color:#D9DAF0">IMPORT ↑</button>
+    </div>
+  </div>
+
+  <div data-ui="1" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" style="zoom:.85;position:absolute;left:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;background:rgba(6,7,13,.9);border:1px solid {{accentLine}};box-shadow:0 0 24px {{accentGlowSoft}}">
+    <sc-for list="{{tools}}" as="t" hint-placeholder-count="8">
+      <button onClick="{{t.run}}" title="{{t.title}}" style="width:58px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:{{t.bg}};color:{{t.fg}};border:none;border-bottom:1px solid {{t.sep}};cursor:pointer;font-family:'GalmuriMono11',monospace" style-hover="background:rgba(255,255,255,.06)">
+        <span style="font-size:15px;line-height:1">{{t.glyph}}</span>
+        <span style="font-family:'GalmuriMono9',monospace;font-size:8.5px;letter-spacing:.1em">{{t.label}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{settingsOpen}}" hint-placeholder-val="{{false}}">
+    <div data-ui="1" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" style="zoom:.85;position:absolute;left:84px;top:66px;width:300px;max-height:calc(100% - 140px);overflow:auto;background:rgba(6,7,13,.95);border:1px solid {{accentLine}};box-shadow:0 0 30px {{accentGlowSoft}};font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid {{accentLine}};letter-spacing:.16em;font-size:11px;color:{{accent}}">
+        <span>SETTINGS / 설정</span><span style="cursor:pointer" onClick="{{toggleSettings}}">✕</span>
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span>강조색 1 — 상자</span><span style="color:{{accent}}">{{nodeName}}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px">
+            <sc-for list="{{nodeSwatches}}" as="s" hint-placeholder-count="8"><button onClick="{{s.pick}}" title="{{s.name}}" style="height:26px;background:{{s.hex}};border:none;outline:{{s.ring}};outline-offset:3px;cursor:pointer;box-shadow:0 0 12px {{s.glow}}"></button></sc-for>
+          </div>
+        </div>
+        <div onClick="{{toggleLinked}}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px dashed rgba(217,218,240,.15);border-bottom:1px dashed rgba(217,218,240,.15);cursor:pointer">
+          <span>연결선 색을 상자와 동일하게</span>
+          <div style="width:34px;height:16px;border:1px solid {{accent}};position:relative;background:{{linkTrack}}"><div style="position:absolute;top:2px;left:{{linkKnob}};width:10px;height:10px;background:{{linkKnobBg}};transition:left .15s"></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;opacity:{{edgeOpacity}}">
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span>강조색 2 — 연결선</span><span style="color:{{edgeAccent}}">{{edgeName}}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px">
+            <sc-for list="{{edgeSwatches}}" as="s" hint-placeholder-count="8"><button onClick="{{s.pick}}" title="{{s.name}}" style="height:26px;background:{{s.hex}};border:none;outline:{{s.ring}};outline-offset:3px;cursor:pointer;box-shadow:0 0 12px {{s.glow}}"></button></sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;border-top:1px dashed rgba(217,218,240,.15);padding-top:14px">
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span>펜 색상</span><span style="color:{{penColor}}">{{penName}}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px">
+            <sc-for list="{{penSwatches}}" as="s" hint-placeholder-count="9"><button onClick="{{s.pick}}" title="{{s.name}}" style="height:22px;background:{{s.hex}};border:none;outline:{{s.ring}};outline-offset:3px;cursor:pointer"></button></sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:6px"><span>펜 굵기</span><span style="color:{{accent}}">{{penWidth}}px</span></div>
+          <input type="range" min="1" max="14" value="{{penWidth}}" onChange="{{onPenWidth}}" style="width:100%;accent-color:{{accent}}">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;border-top:1px dashed rgba(217,218,240,.15);padding-top:14px">
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span>노이즈 / 그레인</span><span style="color:{{accent}}">{{grainPct}}</span></div>
+          <input type="range" min="0" max="45" value="{{grainVal}}" onChange="{{onGrain}}" style="width:100%;accent-color:{{accent}}">
+        </div>
+        <div onClick="{{togglePulse}}" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+          <span>신호 펄스 (뉴런 발화)</span>
+          <div style="width:34px;height:16px;border:1px solid {{accent}};position:relative;background:{{pulseTrack}}"><div style="position:absolute;top:2px;left:{{pulseKnob}};width:10px;height:10px;background:{{pulseKnobBg}};transition:left .15s"></div></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{panelOpen}}" hint-placeholder-val="{{false}}">
+    <div data-ui="1" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" style="zoom:.85;position:absolute;right:14px;top:66px;width:260px;max-height:calc(100% - 140px);overflow:auto;background:rgba(6,7,13,.95);border:1px solid {{accentLine}};box-shadow:0 0 30px {{accentGlowSoft}};font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid {{accentLine}};letter-spacing:.16em;font-size:11px;color:{{accent}}">
+        <span>PROPERTIES</span><span>{{panelTitle}}</span>
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:16px">
+        <sc-if value="{{single}}" hint-placeholder-val="{{true}}">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(217,218,240,.12);border:1px solid rgba(217,218,240,.12);font-family:'GalmuriMono9',monospace;font-size:10px">
+            <sc-for list="{{geom}}" as="g" hint-placeholder-count="4"><div style="background:#07080E;padding:6px 7px;display:flex;flex-direction:column;gap:3px"><span style="color:rgba(217,218,240,.45)">{{g.k}}</span><span style="color:#E9EAF7">{{g.v}}</span></div></sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(217,218,240,.6)"><span>헤더 채우기</span><span style="color:{{headLabelColor}}">{{headLabel}}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:4px">
+            <sc-for list="{{headSwatches}}" as="s" hint-placeholder-count="9">
+              <button onClick="{{s.pick}}" title="{{s.name}}" style="height:22px;background:{{s.bg}};border:{{s.border}};outline:{{s.ring}};outline-offset:2px;cursor:pointer;color:rgba(217,218,240,.6);font-size:10px;padding:0">{{s.mark}}</button>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{isTextSingle}}" hint-placeholder-val="{{true}}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;color:rgba(217,218,240,.6)">서식 — Markdown</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px">
+              <sc-for list="{{formats}}" as="f" hint-placeholder-count="10">
+                <button onMouseDown="{{f.run}}" title="{{f.title}}" style="height:30px;background:transparent;color:#E9EAF7;border:1px solid rgba(217,218,240,.2);cursor:pointer;font-family:'GalmuriMono11',monospace;font-size:12px;font-weight:{{f.weight}};font-style:{{f.italic}};text-decoration:{{f.deco}}" style-hover="border-color:#E9EAF7">{{f.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(217,218,240,.6)"><span>연결</span><span>{{linkCountLabel}}</span></div>
+          <sc-for list="{{panelLinks}}" as="l" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid rgba(217,218,240,.12)">
+              <span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="width:6px;height:6px;flex:none;background:{{edgeAccent}}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{l.label}}</span></span>
+              <span onClick="{{l.unlink}}" title="연결 해제" style="cursor:pointer;color:rgba(217,218,240,.5);flex:none">✕</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{noLinks}}" hint-placeholder-val="{{false}}"><div style="font-size:11px;color:rgba(217,218,240,.35)">{{noLinksText}}</div></sc-if>
+          <sc-if value="{{canLink}}" hint-placeholder-val="{{false}}">
+            <button onClick="{{linkSelected}}" style="height:34px;background:{{edgeAccent}};color:#05060B;border:none;cursor:pointer;font-family:'GalmuriMono11',monospace;font-size:12px">⟜ 두 상자 연결</button>
+          </sc-if>
+        </div>
+        <div style="display:flex;gap:6px">
+          <sc-if value="{{isTextSingle}}" hint-placeholder-val="{{true}}">
+            <button onClick="{{editSelected}}" style="flex:1;height:34px;background:transparent;color:{{accent}};border:1px solid {{accent}};cursor:pointer;font-family:'GalmuriMono11',monospace;font-size:12px">{{editLabel}}</button>
+          </sc-if>
+          <button onClick="{{deleteSel}}" style="flex:1;height:34px;background:transparent;color:#FF9C8F;border:1px solid rgba(255,156,143,.5);cursor:pointer;font-family:'GalmuriMono11',monospace;font-size:12px">삭제 DEL</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div data-ui="1" onMouseDown="{{stop}}" onDoubleClick="{{stop}}" style="zoom:.85;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:stretch;border:1px solid {{accentLine}};background:rgba(6,7,13,.9);box-shadow:0 0 24px {{accentGlowSoft}};font-family:'GalmuriMono11',monospace;font-size:12px;white-space:nowrap">
+    <button onClick="{{prevCat}}" style="padding:10px 14px;background:transparent;color:#D9DAF0;border:none;border-right:1px solid rgba(217,218,240,.12);cursor:pointer" style-hover="background:rgba(255,255,255,.06)">‹ PREV</button>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 16px;min-width:130px;justify-content:center;border-right:1px solid rgba(217,218,240,.12)"><span style="font-family:'GalmuriMono9',monospace;font-size:9px;color:{{accent}}">{{catIndex}}</span><span style="color:#EDEEFA">{{catName}}</span></div>
+    <button onClick="{{nextCat}}" style="padding:10px 14px;background:transparent;color:#D9DAF0;border:none;border-right:1px solid rgba(217,218,240,.12);cursor:pointer" style-hover="background:rgba(255,255,255,.06)">NEXT ›</button>
+    <button onClick="{{zoomOut}}" style="width:38px;background:transparent;color:#D9DAF0;border:none;cursor:pointer;font-size:15px" style-hover="background:rgba(255,255,255,.06)">−</button>
+    <div style="display:flex;align-items:center;justify-content:center;width:52px;font-family:'GalmuriMono9',monospace;font-size:10px;color:{{accent}}">{{zoomPct}}</div>
+    <button onClick="{{zoomIn}}" style="width:38px;background:transparent;color:#D9DAF0;border:none;border-right:1px solid rgba(217,218,240,.12);cursor:pointer;font-size:15px" style-hover="background:rgba(255,255,255,.06)">+</button>
+    <button onClick="{{fitView}}" style="padding:10px 14px;background:transparent;color:#D9DAF0;border:none;border-right:1px solid rgba(217,218,240,.12);cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.06)">{{fitLabel}}</button>
+    <button onClick="{{toggleHelp}}" style="padding:10px 14px;background:{{helpBg}};color:{{helpFg}};border:none;cursor:pointer;white-space:nowrap">{{helpLabel}}</button>
+  </div>
+
+  <sc-if value="{{connectHint}}" hint-placeholder-val="{{false}}">
+    <div style="zoom:.85;position:absolute;left:50%;top:78px;transform:translateX(-50%);padding:8px 14px;border:1px dashed {{edgeAccent}};background:rgba(6,7,13,.9);color:{{edgeAccent}};font-size:11px;letter-spacing:.08em;pointer-events:none">{{connectHintText}}</div>
+  </sc-if>
+
+  <sc-if value="{{helpOpen}}" hint-placeholder-val="{{false}}">
+    <div data-ui="1" onMouseDown="{{closeHelp}}" onDoubleClick="{{stop}}" style="position:absolute;inset:0;background:rgba(3,3,6,.7);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div onMouseDown="{{stop}}" style="zoom:.85;width:min(720px,100%);max-height:100%;overflow:auto;background:rgba(6,7,13,.97);border:1px solid {{accentLine}};box-shadow:0 0 40px {{accentGlowSoft}}">
+        <div style="display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid {{accentLine}};font-size:11px;letter-spacing:.16em;color:{{accent}}"><span>MANUAL / 사용 안내</span><span style="cursor:pointer" onClick="{{toggleHelp}}">✕</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:rgba(217,218,240,.1)">
+          <sc-for list="{{helpGroups}}" as="g" hint-placeholder-count="6">
+            <div style="background:#07080E;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-family:'GalmuriMono9',monospace;font-size:10px;letter-spacing:.16em;color:{{accent}}">{{g.title}}</div>
+              <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:11px;line-height:1.4"><span style="color:#E9EAF7">{{it.k}}</span><span style="color:rgba(217,218,240,.55);text-align:right">{{it.v}}</span></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <input ref="{{fileRef}}" type="file" accept="image/*" onChange="{{onImageFile}}" style="display:none">
+  <input ref="{{importRef}}" type="file" accept=".json,application/json" onChange="{{onImportFile}}" style="display:none">
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;edgeStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;neuron&quot;,&quot;circuit&quot;],&quot;default&quot;:&quot;neuron&quot;,&quot;tsType&quot;:&quot;'neuron'|'circuit'&quot;},&quot;cornerStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sharp&quot;,&quot;soft&quot;],&quot;default&quot;:&quot;sharp&quot;,&quot;tsType&quot;:&quot;'sharp'|'soft'&quot;},&quot;showGrid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const KEY = 'synapse-canvas-v1';
+const K = 0.85;
+const oklchHex = (L, C, H) => {
+  const h = H * Math.PI / 180, a = C * Math.cos(h), b = C * Math.sin(h);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const lin = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  return '#' + lin.map(v => { v = Math.min(1, Math.max(0, v)); v = v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055; return Math.round(v * 255).toString(16).padStart(2, '0'); }).join('').toUpperCase();
+};
+const PALETTE = [['레드', 22], ['오렌지', 55], ['옐로', 95], ['그린', 150], ['시안', 200], ['블루', 250], ['인디고', 280], ['바이올렛', 315]]
+  .map(([name, h]) => ({ name, hex: oklchHex(0.76, 0.13, h) }));
+const PENS = [{ name: '화이트', hex: '#ECECF6' }, ...PALETTE];
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+const uid = () => Math.random().toString(36).slice(2, 9);
+const textW = s => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 0x1100 ? 1 : 0.62; return Math.max(3, w + 0.8) + 'em'; };
+
+function seed() {
+  const box = (id, x, y, w, h, text) => ({ id, type: 'text', x, y, w, h, text });
+  const mk = (name, boxes = [], links = []) => ({ id: uid(), name, boxes, links: links.map(([a, b]) => ({ id: uid(), a, b })), strokes: [], view: null });
+  const cats = [
+    mk('Mind', [
+      box('m1', -130, -70, 250, 120, '# 오늘의 마음\n조금 **피곤하지만** 설렌다.\n*새로운 시작*'),
+      box('m2', 260, -250, 230, 150, '## 감사한 것\n- 따뜻한 커피\n- 저녁 산책\n- [x] 일찍 일어나기'),
+      box('m3', 280, 110, 230, 110, '> 천천히 가도 괜찮아.\n\n오늘의 문장'),
+      box('m4', -520, 80, 220, 140, '### 걱정\n1. 프로젝트 마감\n2. ~~운동 부족~~\n3. 잠'),
+    ], [['m1', 'm2'], ['m1', 'm3'], ['m1', 'm4']]),
+    mk('Ideas', [
+      box('i1', -140, -60, 270, 110, '# 생각 정리 앱\n무한 캔버스 + **마인드맵**'),
+      box('i2', 300, -220, 230, 150, '## 기능\n- 카테고리\n- Markdown 서식\n- `JSON` 백업'),
+      box('i3', 300, 120, 240, 130, '```\nroute(a, b)\n```\n상자를 피해 가는 직각 연결선'),
+    ], [['i1', 'i2'], ['i1', 'i3']]),
+    mk('Schedule', [
+      box('s1', -130, -90, 260, 180, '## November\n- [x] 리서치\n- [ ] 프로토타입\n- [ ] 피드백 반영\n\n---\n**11/14** 데모'),
+    ]),
+    mk('Custom 1'), mk('Custom 2'), mk('Custom 3'),
+  ];
+  return { cats, active: cats[0].id };
+}
+const DEF_PREFS = { nodeColor: PALETTE[5].hex, edgeColor: PALETTE[6].hex, linked: false, penColor: '#ECECF6', penWidth: 3, grain: 22, pulse: true };
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (o && o.data && Array.isArray(o.data.cats) && o.data.cats.length) return o;
+  } catch (e) {}
+  return null;
+}
+
+function md(src, ac) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inl = s => esc(s)
+    .replace(/`([^`]+)`/g, `<code style="background:${rgba(ac, .16)};color:${ac};padding:0 4px;font-family:GalmuriMono11,monospace">$1</code>`)
+    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff">$1</strong>')
+    .replace(/~~(.+?)~~/g, '<s style="opacity:.55">$1</s>')
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+    .replace(/(^|\s)_([^_]+)_/g, '$1<em>$2</em>');
+  const out = []; let list = null, code = null;
+  const close = () => { if (list) { out.push(list === 'ol' ? '</ol>' : '</ul>'); list = null; } };
+  const open = t => { if (list !== t) { close(); out.push(t === 'ol' ? '<ol style="margin:0 0 6px;padding-left:20px">' : `<ul style="margin:0 0 6px;padding-left:${t === 'chk' ? 0 : 16}px;list-style:${t === 'chk' ? 'none' : 'square'}">`); list = t; } };
+  for (const line of src.split('\n')) {
+    if (code !== null) {
+      if (/^```/.test(line)) { out.push(`<pre style="margin:0 0 6px;padding:7px 9px;background:rgba(0,0,0,.45);border:1px dashed ${rgba(ac, .4)};color:${ac};font-family:GalmuriMono11,monospace;font-size:11px;white-space:pre-wrap">${esc(code.join('\n'))}</pre>`); code = null; }
+      else code.push(line);
+      continue;
+    }
+    if (/^```/.test(line)) { close(); code = []; continue; }
+    let m;
+    if ((m = line.match(/^(#{1,3})\s+(.*)/))) {
+      close(); const lv = m[1].length;
+      const st = lv === 1 ? `font-size:18px;color:#fff;text-shadow:0 0 10px ${rgba(ac, .7)}` : lv === 2 ? 'font-size:15px;color:#F2F2FA' : `font-size:13px;color:${ac};letter-spacing:.04em`;
+      out.push(`<div style="${st};margin:0 0 6px;line-height:1.3">${inl(m[2])}</div>`);
+    } else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { close(); out.push(`<div style="border-top:1px dashed ${rgba(ac, .5)};margin:8px 0"></div>`); }
+    else if ((m = line.match(/^>\s?(.*)/))) { close(); out.push(`<div style="border-left:2px solid ${ac};padding:2px 0 2px 9px;margin:0 0 6px;color:rgba(233,234,247,.75)">${inl(m[1])}</div>`); }
+    else if ((m = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)/))) {
+      open('chk'); const on = m[1] !== ' ';
+      out.push(`<li style="display:flex;gap:7px;align-items:baseline"><span style="color:${ac};flex:none">${on ? '■' : '□'}</span><span style="${on ? 'opacity:.55;text-decoration:line-through' : ''}">${inl(m[2])}</span></li>`);
+    }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)/))) { open('ul'); out.push(`<li>${inl(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { open('ol'); out.push(`<li>${inl(m[1])}</li>`); }
+    else if (!line.trim()) { close(); out.push('<div style="height:6px"></div>'); }
+    else { close(); out.push(`<div style="margin:0 0 4px">${inl(line)}</div>`); }
+  }
+  if (code !== null) out.push(`<pre style="margin:0;white-space:pre-wrap;color:${ac}">${esc(code.join('\n'))}</pre>`);
+  close();
+  return out.join('');
+}
+
+class Heap {
+  constructor() { this.k = []; this.v = []; }
+  push(k, v) { const K = this.k, V = this.v; let i = K.length; K.push(k); V.push(v); while (i > 0) { const p = (i - 1) >> 1; if (K[p] <= k) break; K[i] = K[p]; V[i] = V[p]; i = p; } K[i] = k; V[i] = v; }
+  pop() { const K = this.k, V = this.v, top = V[0], lk = K.pop(), lv = V.pop(), n = K.length; if (n) { let i = 0; while (true) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && K[c + 1] < K[c]) c++; if (K[c] >= lk) break; K[i] = K[c]; V[i] = V[c]; i = c; } K[i] = lk; V[i] = lv; } return top; }
+  get size() { return this.k.length; }
+}
+function route(A, B, rects) {
+  const G = 12, P = 12, DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+  const cxA = A.x + A.w / 2, cyA = A.y + A.h / 2, cxB = B.x + B.w / 2, cyB = B.y + B.h / 2;
+  const gapX = Math.abs(cxB - cxA) - (A.w + B.w) / 2, gapY = Math.abs(cyB - cyA) - (A.h + B.h) / 2;
+  let pA, pB, dA, dB;
+  if (gapX >= gapY) { const r = cxB > cxA; pA = { x: r ? A.x + A.w : A.x, y: cyA }; dA = r ? 0 : 2; pB = { x: r ? B.x : B.x + B.w, y: cyB }; dB = r ? 2 : 0; }
+  else { const d = cyB > cyA; pA = { x: cxA, y: d ? A.y + A.h : A.y }; dA = d ? 1 : 3; pB = { x: cxB, y: d ? B.y : B.y + B.h }; dB = d ? 3 : 1; }
+  const M = 220;
+  const minX = Math.min(A.x, B.x) - M, minY = Math.min(A.y, B.y) - M;
+  const maxX = Math.max(A.x + A.w, B.x + B.w) + M, maxY = Math.max(A.y + A.h, B.y + B.h) + M;
+  const cols = Math.ceil((maxX - minX) / G) + 1, rows = Math.ceil((maxY - minY) / G) + 1;
+  if (cols * rows > 60000) return null;
+  const blk = new Uint8Array(cols * rows);
+  for (const r of rects) {
+    const x0 = r.x - P, y0 = r.y - P, x1 = r.x + r.w + P, y1 = r.y + r.h + P;
+    if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) continue;
+    const i0 = Math.max(0, Math.ceil((x0 - minX) / G)), i1 = Math.min(cols - 1, Math.floor((x1 - minX) / G));
+    const j0 = Math.max(0, Math.ceil((y0 - minY) / G)), j1 = Math.min(rows - 1, Math.floor((y1 - minY) / G));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) blk[j * cols + i] = 1;
+  }
+  const cell = (p, d) => {
+    let i = Math.round((p.x + DX[d] * (P + G / 2) - minX) / G), j = Math.round((p.y + DY[d] * (P + G / 2) - minY) / G);
+    while (i >= 0 && j >= 0 && i < cols && j < rows && blk[j * cols + i]) { i += DX[d]; j += DY[d]; }
+    return [Math.max(0, Math.min(cols - 1, i)), Math.max(0, Math.min(rows - 1, j))];
+  };
+  const [si, sj] = cell(pA, dA), [ei, ej] = cell(pB, dB);
+  const S = sj * cols + si, E = ej * cols + ei;
+  blk[S] = 0; blk[E] = 0;
+  const N = cols * rows * 4, dist = new Float32Array(N).fill(1e9), prev = new Int32Array(N).fill(-1);
+  const h = new Heap(); const s0 = S * 4 + dA; dist[s0] = 0; h.push(0, s0);
+  const endDir = (dB + 2) % 4; let best = -1, bestC = 1e9, pops = 0;
+  const hx = c => Math.abs((c % cols) - ei) + Math.abs(((c / cols) | 0) - ej);
+  while (h.size && pops++ < 120000) {
+    const st = h.pop(), c = st >> 2, d = st & 3, cd = dist[st];
+    if (c === E) { const tot = cd + (d === endDir ? 0 : 6); if (tot < bestC) { bestC = tot; best = st; } if (d === endDir) break; continue; }
+    if (cd > bestC) break;
+    const ci = c % cols, cj = (c / cols) | 0;
+    for (let nd = 0; nd < 4; nd++) {
+      if (nd === ((d + 2) & 3)) continue;
+      const ni = ci + DX[nd], nj = cj + DY[nd];
+      if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+      const nc = nj * cols + ni; if (blk[nc]) continue;
+      const ns = nc * 4 + nd, cost = cd + 1 + (nd !== d ? 5 : 0);
+      if (cost < dist[ns]) { dist[ns] = cost; prev[ns] = st; h.push(cost + hx(nc), ns); }
+    }
+  }
+  if (best < 0) return null;
+  const cells = []; for (let st = best; st >= 0; st = prev[st]) cells.push(st >> 2);
+  cells.reverse();
+  const pts = cells.map(c => ({ x: minX + (c % cols) * G, y: minY + ((c / cols) | 0) * G }));
+  const c0 = pts[0], cn = pts[pts.length - 1];
+  const lead = dA % 2 === 0 ? { x: c0.x, y: pA.y } : { x: pA.x, y: c0.y };
+  const tail = dB % 2 === 0 ? { x: cn.x, y: pB.y } : { x: pB.x, y: cn.y };
+  const all = [pA, lead, ...pts, tail, pB];
+  const out = [];
+  for (const p of all) {
+    const L = out.length;
+    if (L && out[L - 1].x === p.x && out[L - 1].y === p.y) continue;
+    if (L >= 2) { const a = out[L - 2], b = out[L - 1]; if ((a.x === b.x && b.x === p.x) || (a.y === b.y && b.y === p.y)) { out[L - 1] = p; continue; } }
+    out.push(p);
+  }
+  return out;
+}
+const ports = (A, B) => {
+  const cxA = A.x + A.w / 2, cyA = A.y + A.h / 2, cxB = B.x + B.w / 2, cyB = B.y + B.h / 2;
+  const gapX = Math.abs(cxB - cxA) - (A.w + B.w) / 2, gapY = Math.abs(cyB - cyA) - (A.h + B.h) / 2;
+  if (gapX >= gapY) { const r = cxB > cxA; return [{ x: r ? A.x + A.w : A.x, y: cyA, h: 1 }, { x: r ? B.x : B.x + B.w, y: cyB, h: 1 }]; }
+  const d = cyB > cyA; return [{ x: cxA, y: d ? A.y + A.h : A.y, h: 0 }, { x: cxB, y: d ? B.y : B.y + B.h, h: 0 }];
+};
+const curve = (A, B) => {
+  const [a, b] = ports(A, B);
+  if (a.h) { const k = (b.x - a.x) * 0.5; return `M ${a.x} ${a.y} C ${a.x + k} ${a.y}, ${b.x - k} ${b.y}, ${b.x} ${b.y}`; }
+  const k = (b.y - a.y) * 0.5; return `M ${a.x} ${a.y} C ${a.x} ${a.y + k}, ${b.x} ${b.y - k}, ${b.x} ${b.y}`;
+};
+const dendrite = (d, i) => {
+  const n = d.match(/-?[\d.]+/g).map(Number); if (n.length < 8) return d;
+  const o = (i % 2 ? 1 : -1) * 22;
+  return `M ${n[0]} ${n[1]} C ${n[2]} ${n[3] + o}, ${n[4]} ${n[5] - o}, ${n[6]} ${n[7]}`;
+};
+const smooth = pts => {
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; d += ` Q ${pts[i][0]} ${pts[i][1]} ${mx} ${my}`; }
+  const l = pts[pts.length - 1]; return d + ` L ${l[0]} ${l[1]}`;
+};
+const roundPath = (pts, r) => {
+  if (!r) return 'M ' + pts.map(p => `${p.x} ${p.y}`).join(' L ');
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    const r1 = Math.min(r, Math.hypot(b.x - a.x, b.y - a.y) / 2, Math.hypot(c.x - b.x, c.y - b.y) / 2);
+    const ux = Math.sign(b.x - a.x), uy = Math.sign(b.y - a.y), vx = Math.sign(c.x - b.x), vy = Math.sign(c.y - b.y);
+    d += ` L ${b.x - ux * r1} ${b.y - uy * r1} Q ${b.x} ${b.y} ${b.x + vx * r1} ${b.y + vy * r1}`;
+  }
+  const l = pts[pts.length - 1]; return d + ` L ${l.x} ${l.y}`;
+};
+
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    const saved = load();
+    this.state = {
+      data: saved ? saved.data : seed(), prefs: { ...DEF_PREFS, ...(saved && saved.prefs) },
+      tool: 'select', sel: [], editing: null, hover: null, connectFrom: null, mouseW: null,
+      settingsOpen: false, helpOpen: false, renaming: null, saveStatus: 'SAVED', saveErr: false,
+      swipe: 0, liveStroke: null, space: false, flash: null, flashOn: false, panning: false,
+    };
+    this.hist = []; this.noiseRef = React.createRef(); this.fileRef = React.createRef(); this.importRef = React.createRef();
+    this.mdCache = new Map(); this.routeCache = new Map();
+  }
+  get cat() { const d = this.state.data; return d.cats.find(c => c.id === d.active) || d.cats[0]; }
+  componentDidMount() {
+    this.h = {
+      move: e => this.onMove(e), up: e => this.onUp(e), key: e => this.onKey(e), keyup: e => { if (e.code === 'Space') this.setState({ space: false }); },
+      wheel: e => this.onWheel(e), resize: () => { this.sizeNoise && this.sizeNoise(); if (!this.userMoved) this.fit(); },
+    };
+    window.addEventListener('mousemove', this.h.move);
+    window.addEventListener('mouseup', this.h.up);
+    window.addEventListener('keydown', this.h.key);
+    window.addEventListener('keyup', this.h.keyup);
+    window.addEventListener('wheel', this.h.wheel, { passive: false });
+    window.addEventListener('resize', this.h.resize);
+    this.startNoise();
+    const tryFit = () => { if (window.innerWidth > 0 && !this.userMoved) this.fit(); };
+    [0, 120, 400, 1000].forEach(t => setTimeout(tryFit, t));
+  }
+  componentWillUnmount() {
+    ['mousemove', 'mouseup', 'keydown', 'keyup', 'resize'].forEach((ev, i) => window.removeEventListener(ev, [this.h.move, this.h.up, this.h.key, this.h.keyup, this.h.resize][i]));
+    window.removeEventListener('wheel', this.h.wheel);
+    clearInterval(this.noiseTimer);
+  }
+  componentDidUpdate() {
+    const ta = document.querySelector('[data-edit-ta]');
+    if (ta && this.focusEdit) { this.focusEdit = false; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    const rn = document.querySelector('[data-rename]');
+    if (rn && this.focusRename) { this.focusRename = false; rn.focus(); rn.select(); }
+  }
+  startNoise() {
+    const c = this.noiseRef.current; if (!c) return;
+    const ctx = c.getContext('2d');
+    this.sizeNoise = () => { c.width = Math.ceil(window.innerWidth); c.height = Math.ceil(window.innerHeight); };
+    this.sizeNoise();
+    this.noiseTimer = setInterval(() => {
+      if (!c.width || !c.height) this.sizeNoise();
+      const w = c.width, h = c.height; if (!w || !h) return;
+      const img = ctx.createImageData(w, h), d = img.data;
+      for (let i = 0; i < d.length; i += 4) { const v = Math.random() * 255; d[i] = v * 0.9 + 20; d[i + 1] = v * 0.9 + 20; d[i + 2] = 255; d[i + 3] = Math.random() < 0.4 ? Math.random() * 110 : 0; }
+      ctx.putImageData(img, 0, 0);
+    }, 140);
+  }
+  // data
+  setData(fn, push = true) {
+    this.setState(s => { const nd = fn(s.data); if (nd === s.data) return null; if (push) { this.hist.push(s.data); if (this.hist.length > 100) this.hist.shift(); } return { data: nd }; }, () => this.scheduleSave());
+  }
+  updCat(fn, push = true) { this.setData(d => ({ ...d, cats: d.cats.map(c => (c.id === d.active ? fn(c) : c)) }), push); }
+  snapshot() { this.hist.push(this.state.data); if (this.hist.length > 100) this.hist.shift(); }
+  undo() {
+    const prev = this.hist.pop(); if (!prev) return;
+    this.setState(s => ({ data: { ...prev, active: prev.cats.some(c => c.id === s.data.active) ? s.data.active : prev.active }, sel: [], editing: null, connectFrom: null }), () => this.scheduleSave());
+  }
+  setPref(p) { this.setState(s => ({ prefs: { ...s.prefs, ...p } }), () => this.scheduleSave()); }
+  scheduleSave() {
+    if (this.state.saveStatus !== 'SAVING…') this.setState({ saveStatus: 'SAVING…' });
+    clearTimeout(this.saveT);
+    this.saveT = setTimeout(() => {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ data: this.state.data, prefs: this.state.prefs }));
+        const t = new Date();
+        this.setState({ saveStatus: 'SAVED ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'), saveErr: false });
+      } catch (e) { this.setState({ saveStatus: 'STORAGE FULL — 백업 권장', saveErr: true }); }
+    }, 500);
+  }
+  view() { const v = this.cat.view; return v || { x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 }; }
+  setView(v) { this.updCat(c => ({ ...c, view: { ...(c.view || this.view()), ...v } }), false); }
+  toWorld(cx, cy) { const v = this.view(), z = v.z * K; return { x: (cx - v.x) / z, y: (cy - v.y) / z }; }
+  fit() {
+    const c = this.cat, W = window.innerWidth, H = window.innerHeight; if (!W || !H) return;
+    const xs = [], ys = [];
+    c.boxes.forEach(b => { xs.push(b.x, b.x + b.w); ys.push(b.y, b.y + b.h); });
+    c.strokes.forEach(s => s.pts.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+    const L = 80, T = 60, R = this.state.sel.length ? 250 : 30, Bm = 70, aw = W - L - R, ah = H - T - Bm;
+    if (!xs.length) return this.setView({ x: L + aw / 2, y: T + ah / 2, z: 1 });
+    const minX = Math.min(...xs) - 40, maxX = Math.max(...xs) + 40, minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 40;
+    const ze = Math.max(0.2 * K, Math.min(1.2 * K, aw / (maxX - minX), ah / (maxY - minY)));
+    this.setView({ z: ze / K, x: L + aw / 2 - ((minX + maxX) / 2) * ze, y: T + ah / 2 - ((minY + maxY) / 2) * ze });
+  }
+  setViewUser(v) { this.userMoved = true; this.setView(v); }
+  zoomAt(cx, cy, z2) {
+    this.userMoved = true;
+    const v = this.view(), z = Math.max(0.2, Math.min(3, z2)), k = z / v.z;
+    this.setView({ z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k });
+  }
+  go(step) {
+    const d = this.state.data, i = d.cats.findIndex(c => c.id === d.active), n = d.cats.length;
+    this.switchTo(d.cats[(i + step + n) % n].id);
+  }
+  switchTo(id) {
+    const d = this.state.data; if (id === d.active) return;
+    const cat = d.cats.find(c => c.id === id), idx = d.cats.indexOf(cat);
+    this.setData(dd => ({ ...dd, active: id }), false);
+    this.setState({ sel: [], editing: null, connectFrom: null, hover: null, flash: { name: cat.name, idx }, flashOn: true });
+    clearTimeout(this.flashT); this.flashT = setTimeout(() => this.setState({ flashOn: false }), 700);
+    if (!cat.view) setTimeout(() => this.fit(), 0);
+  }
+  // actions
+  createText(wx, wy) {
+    const id = uid();
+    this.updCat(c => ({ ...c, boxes: [...c.boxes, { id, type: 'text', x: Math.round(wx - 110), y: Math.round(wy - 14), w: 220, h: 110, text: '' }] }));
+    this.focusEdit = true;
+    this.setState({ sel: [id], editing: id, tool: 'select' });
+  }
+  startEdit(id) { this.snapshot(); this.focusEdit = true; this.setState({ editing: id, sel: [id] }); }
+  addLink(a, b) {
+    if (a === b) return;
+    const ex = this.cat.links.some(l => (l.a === a && l.b === b) || (l.a === b && l.b === a));
+    if (ex) return;
+    this.updCat(c => ({ ...c, links: [...c.links, { id: uid(), a, b }] }));
+  }
+  deleteSel() {
+    const del = new Set(this.state.sel); if (!del.size) return;
+    this.updCat(c => ({ ...c, boxes: c.boxes.filter(b => !del.has(b.id)), links: c.links.filter(l => !del.has(l.a) && !del.has(l.b)) }));
+    this.setState({ sel: [], editing: null });
+  }
+  setTool(t) { this.setState({ tool: t, connectFrom: null, editing: t === 'select' ? this.state.editing : null }); }
+  fmt(kind) {
+    const id = this.state.sel[0], box = this.cat.boxes.find(b => b.id === id);
+    if (!box || box.type !== 'text') return;
+    if (this.state.editing !== id) { this.startEdit(id); setTimeout(() => this.fmt(kind), 40); return; }
+    const ta = document.querySelector('[data-edit-ta]'); const t = box.text;
+    const s = ta ? ta.selectionStart : t.length, e = ta ? ta.selectionEnd : t.length;
+    const wrap = { bold: '**', italic: '*', strike: '~~', code: '`' }[kind];
+    let nt, cs, ce;
+    if (wrap) { const mid = t.slice(s, e) || '텍스트'; nt = t.slice(0, s) + wrap + mid + wrap + t.slice(e); cs = s + wrap.length; ce = cs + mid.length; }
+    else {
+      const pre = { h1: '# ', h2: '## ', ul: '- ', ol: '1. ', check: '- [ ] ', quote: '> ' }[kind];
+      if (kind === 'hr') { const ins = (t && !t.endsWith('\n') ? '\n' : '') + '---\n'; nt = t.slice(0, e) + ins + t.slice(e); cs = ce = e + ins.length; }
+      else { const ls = t.lastIndexOf('\n', s - 1) + 1; nt = t.slice(0, ls) + pre + t.slice(ls); cs = s + pre.length; ce = e + pre.length; }
+    }
+    this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text: nt } : b)) }), false);
+    setTimeout(() => { const a = document.querySelector('[data-edit-ta]'); if (a) { a.focus(); a.setSelectionRange(cs, ce); } }, 0);
+  }
+  addImage(file) {
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1200, k = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        const src = cv.toDataURL('image/jpeg', 0.85);
+        const w = 280, h = Math.round(Math.min(420, Math.max(90, (w * img.height) / img.width))) + 18;
+        const c = this.toWorld(window.innerWidth / 2, window.innerHeight / 2), id = uid();
+        this.updCat(cat => ({ ...cat, boxes: [...cat.boxes, { id, type: 'image', x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2), w, h, src }] }));
+        this.setState({ sel: [id], tool: 'select' });
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  }
+  doExport() {
+    const blob = new Blob([JSON.stringify({ app: 'synapse-canvas', version: 1, exportedAt: new Date().toISOString(), data: this.state.data, prefs: this.state.prefs }, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a'); const d = new Date();
+    a.href = URL.createObjectURL(blob); a.download = `synapse-backup-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  doImport(file) {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const o = JSON.parse(r.result);
+        if (!o.data || !Array.isArray(o.data.cats) || !o.data.cats.length) throw new Error('bad');
+        if (!window.confirm('백업 파일의 내용으로 현재 작업을 교체할까요?')) return;
+        this.snapshot();
+        this.setState({ data: o.data, prefs: { ...DEF_PREFS, ...(o.prefs || {}) }, sel: [], editing: null }, () => this.scheduleSave());
+      } catch (e) { window.alert('올바른 백업 파일이 아닙니다.'); }
+    };
+    r.readAsText(file);
+  }
+  // input
+  onBgDown(e) {
+    if (this.state.renaming) this.setState({ renaming: null });
+    const { tool, space } = this.state, v = this.view();
+    if (e.button === 1 || space || tool === 'pan') { e.preventDefault(); this.drag = { type: 'pan', sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y }; this.setState({ panning: true }); return; }
+    if (tool === 'draw') { const w = this.toWorld(e.clientX, e.clientY); this.drag = { type: 'draw' }; this.setState({ liveStroke: [[w.x, w.y]] }); return; }
+    if (tool === 'text') { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
+    if (tool === 'connect') { this.setState({ connectFrom: null }); return; }
+    this.setState({ editing: null });
+    this.drag = { type: 'swipe', sx: e.clientX, sy: e.clientY, shift: e.shiftKey };
+  }
+  onMove(e) {
+    if (this.state.connectFrom) { const w = this.toWorld(e.clientX, e.clientY); this.setState({ mouseW: w }); }
+    const d = this.drag; if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy, z = this.view().z * K;
+    if (d.type === 'pan') this.setViewUser({ x: d.ox + dx, y: d.oy + dy });
+    else if (d.type === 'draw') { const w = this.toWorld(e.clientX, e.clientY); this.setState(s => { const p = s.liveStroke, l = p[p.length - 1]; return Math.hypot(w.x - l[0], w.y - l[1]) * z > 2 ? { liveStroke: [...p, [w.x, w.y]] } : null; }); }
+    else if (d.type === 'swipe') { if (Math.abs(dx) > 8) this.setState({ swipe: dx }); d.dx = dx; d.dy = dy; }
+    else if (d.type === 'move' || d.type === 'resize') {
+      if (!d.pushed) { if (Math.hypot(dx, dy) < 3) return; this.snapshot(); d.pushed = true; this.setState({ dragging: true }); }
+      if (d.type === 'move') this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (d.orig[b.id] ? { ...b, x: Math.round(d.orig[b.id].x + dx / z), y: Math.round(d.orig[b.id].y + dy / z) } : b)) }), false);
+      else this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === d.id ? { ...b, w: Math.max(120, Math.round(d.ow + dx / z)), h: Math.max(60, Math.round(d.oh + dy / z)) } : b)) }), false);
+    }
+  }
+  onUp() {
+    const d = this.drag; this.drag = null; if (!d) return;
+    if (d.type === 'pan') this.setState({ panning: false });
+    if (d.type === 'draw') {
+      const pts = this.state.liveStroke || []; const { penColor, penWidth } = this.state.prefs;
+      if (pts.length > 1) this.updCat(c => ({ ...c, strokes: [...c.strokes, { id: uid(), color: penColor, width: penWidth, pts: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]) }] }));
+      this.setState({ liveStroke: null });
+    }
+    if (d.type === 'swipe') {
+      const dx = d.dx || 0, dy = d.dy || 0;
+      this.setState({ swipe: 0 });
+      if (Math.abs(dx) > 180 && Math.abs(dx) > Math.abs(dy) * 1.5) this.go(dx < 0 ? 1 : -1);
+      else if (Math.hypot(dx, dy) < 5 && !d.shift) this.setState({ sel: [] });
+    }
+    if (d.type === 'move' || d.type === 'resize') this.setState({ dragging: false });
+  }
+  onWheel(e) {
+    const t = e.target;
+    if (t.closest && t.closest('[data-ui]')) return;
+    const sc = t.closest && t.closest('[data-scroll]');
+    if (sc && sc.scrollHeight > sc.clientHeight + 1 && !e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const v = this.view();
+    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, v.z * Math.exp(-e.deltaY * 0.01)); return; }
+    if (!e.shiftKey && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.5 && Math.abs(e.deltaX) > 4) {
+      this.wAcc = (this.wAcc || 0) + e.deltaX;
+      clearTimeout(this.wT); this.wT = setTimeout(() => { this.wAcc = 0; this.setState({ swipe: 0 }); }, 220);
+      if (Date.now() < (this.wCool || 0)) return;
+      this.setState({ swipe: -this.wAcc * 0.8 });
+      if (Math.abs(this.wAcc) > 260) { this.go(this.wAcc > 0 ? 1 : -1); this.wAcc = 0; this.wCool = Date.now() + 700; this.setState({ swipe: 0 }); }
+      return;
+    }
+    if (e.shiftKey) this.setViewUser({ x: v.x - e.deltaY });
+    else this.setViewUser({ x: v.x - e.deltaX, y: v.y - e.deltaY });
+  }
+  onKey(e) {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.code === 'Space') { e.preventDefault(); if (!this.state.space) this.setState({ space: true }); return; }
+    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); return; }
+    if (mod) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
+    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false }); return; }
+    if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
+    const map = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
+    const k = e.key.toLowerCase();
+    if (map[k]) this.setTool(map[k]);
+    else if (k === 'i') this.fileRef.current && this.fileRef.current.click();
+  }
+  boxSelect(id, shift) {
+    const sel = this.state.sel;
+    let ns = shift ? (sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]) : (sel.includes(id) ? sel : [id]);
+    this.setState({ sel: ns, editing: this.state.editing === id ? id : null });
+    return ns;
+  }
+  passThrough() { const { tool, space } = this.state; return space || tool === 'pan' || tool === 'draw' || tool === 'text'; }
+  linksSvg(nc, ec, boxes) {
+    const h = React.createElement, s = this.state, c = this.cat;
+    const byId = Object.fromEntries(boxes.map(b => [b.id, b]));
+    const rk = boxes.map(b => `${b.id}:${b.x},${b.y},${b.w},${b.h}`).join(';');
+    if (this.routeCache.size > 400) this.routeCache.clear();
+    const kids = [];
+    const rr = this.props.cornerStyle === 'soft' ? 8 : 0;
+    c.strokes.forEach(st => {
+      const d = smooth(st.pts);
+      kids.push(h('path', { key: st.id + 'g', d, stroke: st.color, strokeWidth: st.width + 5, opacity: 0.18, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', filter: 'url(#eblur)' }),
+        h('path', { key: st.id, d, stroke: st.color, strokeWidth: st.width, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }));
+    });
+    if (s.liveStroke) kids.push(h('path', { key: 'live', d: smooth(s.liveStroke), stroke: s.prefs.penColor, strokeWidth: s.prefs.penWidth, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }));
+    c.links.forEach((l, i) => {
+      const A = byId[l.a], B = byId[l.b]; if (!A || !B) return;
+      const key = l.a + '>' + l.b + '|' + rk;
+      let pts = this.routeCache.get(key);
+      const neu = this.props.edgeStyle !== 'circuit';
+      if (neu) pts = ports(A, B);
+      else if (pts === undefined) { pts = route(A, B, boxes); this.routeCache.set(key, pts); }
+      if (!pts) return;
+      const neuron = this.props.edgeStyle !== 'circuit';
+      const pa = pts[0], pb = pts[pts.length - 1];
+      const d = neuron ? curve(A, B) : roundPath(pts, rr);
+      const hot = [s.hover, ...s.sel].some(x => x && (x === l.a || x === l.b));
+      const a0 = pts[0], a1 = pts[pts.length - 1];
+      kids.push(
+        h('path', { key: l.id + 'g', d, stroke: ec, strokeWidth: hot ? 8 : 5, opacity: hot ? 0.5 : 0.25, fill: 'none', filter: 'url(#eblur)' }),
+        h('path', { key: l.id + 'c', d, stroke: ec, strokeWidth: hot ? 1.8 : 1.2, opacity: hot ? 1 : 0.85, fill: 'none' }),
+        ...(neuron ? [
+          h('path', { key: l.id + 'n', d: dendrite(d, i), stroke: ec, strokeWidth: 0.7, opacity: 0.3, fill: 'none', strokeDasharray: '1 5' }),
+          h('circle', { key: l.id + 'a', cx: a0.x, cy: a0.y, r: 2.5, fill: ec }),
+          h('circle', { key: l.id + 'b', cx: a1.x, cy: a1.y, r: 3.5, fill: ec }),
+        ] : [
+          h('rect', { key: l.id + 'a', x: a0.x - 3, y: a0.y - 3, width: 6, height: 6, fill: ec }),
+          h('rect', { key: l.id + 'b', x: a1.x - 3, y: a1.y - 3, width: 6, height: 6, fill: '#05060B', stroke: ec, strokeWidth: 1.2 }),
+        ]),
+      );
+      if (s.prefs.pulse) kids.push(h('circle', { key: l.id + 'p' + d, r: 2.6, fill: '#fff', filter: 'url(#pglow)' },
+        h('animateMotion', { dur: (2.6 + (i % 4) * 0.6) + 's', repeatCount: 'indefinite', path: d, begin: -(i * 0.8) + 's' })));
+    });
+    if (s.connectFrom && s.mouseW && byId[s.connectFrom]) {
+      const A = byId[s.connectFrom];
+      kids.push(h('path', { key: 'cpre', d: `M ${A.x + A.w / 2} ${A.y + A.h / 2} L ${s.mouseW.x} ${s.mouseW.y}`, stroke: ec, strokeWidth: 1.2, strokeDasharray: '4 4', fill: 'none' }));
+    }
+    return h('svg', { style: { position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' } },
+      h('defs', null,
+        h('filter', { id: 'eblur', x: '-50%', y: '-50%', width: '200%', height: '200%' }, h('feGaussianBlur', { stdDeviation: 4 })),
+        h('filter', { id: 'pglow', x: '-300%', y: '-300%', width: '700%', height: '700%' },
+          h('feGaussianBlur', { stdDeviation: 2.5, result: 'b' }), h('feFlood', { floodColor: ec }), h('feComposite', { in2: 'b', operator: 'in', result: 'c' }),
+          h('feMerge', null, h('feMergeNode', { in: 'c' }), h('feMergeNode', { in: 'c' }), h('feMergeNode', { in: 'SourceGraphic' })))),
+      kids);
+  }
+  renderVals() {
+    const s = this.state, P = s.prefs, c = this.cat, v = this.view(), d = s.data;
+    const nc = P.nodeColor, ec = P.linked ? nc : P.edgeColor;
+    const soft = this.props.cornerStyle === 'soft';
+    const idx = d.cats.indexOf(c);
+    const boxes = c.boxes.map((b, i) => {
+      const sel = s.sel.includes(b.id), hov = s.hover === b.id, edit = s.editing === b.id, from = s.connectFrom === b.id;
+      let body = null;
+      if (b.type === 'text' && !edit) {
+        const key = b.text + '|' + nc;
+        let html = this.mdCache.get(key);
+        if (html === undefined) { html = b.text.trim() ? md(b.text, nc) : '<span style="opacity:.35">빈 상자 — 더블클릭해서 작성</span>'; if (this.mdCache.size > 300) this.mdCache.clear(); this.mdCache.set(key, html); }
+        body = React.createElement('div', { 'data-scroll': '1', style: { flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 12px', fontFamily: "'Galmuri11',monospace", fontSize: 12.5, lineHeight: 1.55, color: '#E3E4F2', textShadow: `0 0 8px ${rgba(nc, 0.6)}`, wordBreak: 'keep-all', overflowWrap: 'anywhere' }, dangerouslySetInnerHTML: { __html: html } });
+      }
+      return {
+        ...b, z: sel || hov ? 10 : 2,
+        scale: hov && !s.dragging && !edit ? 1.035 : 1,
+        bg: 'rgba(7,8,14,.86)',
+        border: rgba(nc, sel || hov ? 1 : 0.5),
+        line: sel || hov ? rgba(nc, 0.4) : 'transparent', handleOp: sel || hov || edit ? 1 : 0.45,
+        shadow: sel || hov ? `0 0 20px ${rgba(nc, 0.5)}, 0 0 60px ${rgba(nc, 0.18)}, inset 0 0 14px ${rgba(nc, 0.16)}` : `0 0 12px ${rgba(nc, 0.16)}`,
+        outline: from ? `1px dashed ${ec}` : 'none',
+        tagColor: nc, tick: sel ? nc : 'transparent',
+        headBg: b.head ? b.head : 'transparent', headFg: b.head ? '#05060B' : nc,
+        ...(b.head ? { handleOp: 1, line: b.head } : {}),
+        tag: (b.type === 'image' ? 'IMG-' : 'TXT-') + String(i + 1).padStart(2, '0'),
+        state: edit ? 'EDIT_' : from ? 'LINK…' : sel ? 'SEL' : '',
+        editing: edit, showBody: !!body, body, isImage: b.type === 'image',
+        img: b.type === 'image' ? React.createElement('img', { src: b.src, draggable: false, alt: '', style: { flex: 1, minHeight: 0, width: '100%', objectFit: 'cover', display: 'block', filter: 'contrast(1.05) saturate(.9)' } }) : null,
+        onEnter: () => this.setState({ hover: b.id }),
+        onLeave: () => this.setState(st => (st.hover === b.id ? { hover: null } : null)),
+        onDown: e => {
+          if (this.passThrough()) return;
+          e.stopPropagation();
+          if (s.tool === 'connect') {
+            if (!s.connectFrom) this.setState({ connectFrom: b.id, mouseW: null });
+            else { this.addLink(s.connectFrom, b.id); this.setState({ connectFrom: null }); }
+            return;
+          }
+          if (s.editing === b.id) return;
+          this.boxSelect(b.id, e.shiftKey);
+        },
+        onHandle: e => {
+          if (this.passThrough() || s.tool === 'connect') return;
+          e.stopPropagation();
+          const ns = this.boxSelect(b.id, e.shiftKey);
+          if (!ns.includes(b.id)) return;
+          const orig = {}; c.boxes.forEach(x => { if (ns.includes(x.id)) orig[x.id] = { x: x.x, y: x.y }; });
+          this.drag = { type: 'move', sx: e.clientX, sy: e.clientY, orig };
+        },
+        onResize: e => { if (this.passThrough()) return; e.stopPropagation(); this.setState({ sel: [b.id] }); this.drag = { type: 'resize', id: b.id, sx: e.clientX, sy: e.clientY, ow: b.w, oh: b.h }; },
+        onDbl: e => { e.stopPropagation(); if (b.type === 'text' && s.tool === 'select') this.startEdit(b.id); },
+        onInput: e => { const val = e.target.value; this.updCat(cc => ({ ...cc, boxes: cc.boxes.map(x => (x.id === b.id ? { ...x, text: val } : x)) }), false); },
+        onKey: e => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); this.setState({ editing: null }); } },
+      };
+    });
+    const selBoxes = c.boxes.filter(b => s.sel.includes(b.id));
+    const single = selBoxes.length === 1 ? selBoxes[0] : null;
+    const labelOf = b => { if (!b) return '?'; if (b.type === 'image') return 'IMAGE'; const ln = (b.text.split('\n').find(x => x.trim()) || '빈 상자').replace(/^[#>\-*\d.\s[\]x]+/, '').replace(/[*_~`]/g, ''); return ln.slice(0, 22) || '빈 상자'; };
+    const byId = Object.fromEntries(c.boxes.map(b => [b.id, b]));
+    const panelLinks = single ? c.links.filter(l => l.a === single.id || l.b === single.id).map(l => ({
+      label: labelOf(byId[l.a === single.id ? l.b : l.a]),
+      unlink: () => this.updCat(cc => ({ ...cc, links: cc.links.filter(x => x.id !== l.id) })),
+    })) : [];
+    const pairLinked = selBoxes.length === 2 && c.links.some(l => (l.a === s.sel[0] && l.b === s.sel[1]) || (l.a === s.sel[1] && l.b === s.sel[0]));
+    const sw = (list, cur, pick) => list.map(p => ({ ...p, glow: rgba(p.hex, cur === p.hex ? 0.6 : 0.12), ring: cur === p.hex ? '1px solid #fff' : '1px solid transparent', pick: () => pick(p.hex) }));
+    const nm = hex => (PENS.find(p => p.hex === hex) || {}).name || hex;
+    const g = Math.round(28 * v.z * K);
+    const active = (t) => s.tool === t;
+    const toolBtn = (id, glyph, label, title, run, on) => ({ glyph, label, title, run, bg: on ? nc : 'transparent', fg: on ? '#05060B' : '#D9DAF0', sep: 'rgba(217,218,240,.1)' });
+    const swAbs = Math.abs(s.swipe), sd = s.swipe < 0 ? 1 : -1, n = d.cats.length;
+    const target = d.cats[(idx + sd + n) % n];
+    const tabs = d.cats.map((t, i) => {
+      const on = t.id === d.active;
+      return {
+        id: t.id, name: t.name, num: String(i + 1).padStart(2, '0'), renaming: s.renaming === t.id, showName: s.renaming !== t.id, inputW: textW(t.name),
+        bg: on ? nc : 'transparent', fg: on ? '#05060B' : '#D9DAF0', border: on ? nc : 'rgba(217,218,240,.16)', shadow: on ? `0 0 16px ${rgba(nc, 0.5)}` : 'none',
+        onClick: () => this.switchTo(t.id),
+        onDbl: e => { e.stopPropagation(); this.snapshot(); this.focusRename = true; this.setState({ renaming: t.id }); },
+        onDragStart: e => { this.dragTab = t.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', t.id); } catch (er) {} },
+        onDragOver: e => e.preventDefault(),
+        onDrop: e => {
+          e.preventDefault(); const from = this.dragTab; this.dragTab = null; if (!from || from === t.id) return;
+          this.setData(dd => { const arr = dd.cats.filter(x => x.id !== from), mv = dd.cats.find(x => x.id === from), ti = arr.findIndex(x => x.id === t.id); const fi = dd.cats.findIndex(x => x.id === from); arr.splice(fi < dd.cats.findIndex(x => x.id === t.id) ? ti + 1 : ti, 0, mv); return { ...dd, cats: arr }; });
+        },
+        onRename: e => { const val = e.target.value; this.setData(dd => ({ ...dd, cats: dd.cats.map(x => (x.id === t.id ? { ...x, name: val } : x)) }), false); },
+        onRenameKey: e => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); },
+      };
+    });
+    const selHeads = [...new Set(selBoxes.map(b => b.head || null))];
+    const curHead = selHeads.length === 1 ? selHeads[0] : undefined;
+    const setHead = hex => this.updCat(cc => ({ ...cc, boxes: cc.boxes.map(x => (s.sel.includes(x.id) ? { ...x, head: hex } : x)) }));
+    const headSwatches = [{ name: '없음', hex: null }, ...PALETTE].map(p => ({
+      name: p.name, mark: p.hex ? '' : '∅', bg: p.hex || 'transparent', border: p.hex ? 'none' : '1px dashed rgba(217,218,240,.35)',
+      ring: curHead === p.hex ? '1px solid #fff' : '1px solid transparent', pick: () => setHead(p.hex),
+    }));
+    const F = (label, title, kind, x = {}) => ({ label, title, weight: x.w || 400, italic: x.i ? 'italic' : 'normal', deco: x.s ? 'line-through' : 'none', run: e => { e.preventDefault(); e.stopPropagation(); this.fmt(kind); } });
+    return {
+      boxes, edgeLayer: this.linksSvg(nc, ec, c.boxes), noiseRef: this.noiseRef, fileRef: this.fileRef, importRef: this.importRef,
+      showGrid: this.props.showGrid ?? true, radius: soft ? '6px' : '0px',
+      worldTransform: `translate(${v.x}px, ${v.y}px) scale(${v.z * K})`, gridSize: `${g}px ${g}px`, gridPos: `${v.x}px ${v.y}px`,
+      cursor: s.panning ? 'grabbing' : (s.space || s.tool === 'pan') ? 'grab' : s.tool === 'draw' ? 'crosshair' : s.tool === 'text' ? 'text' : s.tool === 'connect' ? 'cell' : 'default',
+      swipeShift: s.swipe * 0.35, swipeFade: Math.max(0.35, 1 - swAbs / 500), swipeVisible: swAbs > 30,
+      swipeLabel: (sd > 0 ? 'NEXT → ' : '← PREV ') + (target ? target.name.toUpperCase() : ''), swipeProgress: Math.min(100, (swAbs / 180) * 100) + '%',
+      flashOpacity: s.flashOn ? 1 : 0, flashName: s.flash ? s.flash.name : '', flashIndex: s.flash ? String(s.flash.idx + 1).padStart(2, '0') + ' / ' + String(n).padStart(2, '0') : '',
+      haze1: nc, haze2: ec, grain: P.grain / 100, grainVal: P.grain, grainPct: P.grain + '%',
+      accent: nc, edgeAccent: ec, accentGlow: rgba(nc, 0.6), accentGlowSoft: rgba(nc, 0.14), accentLine: rgba(nc, 0.38),
+      tabs, endRename: () => this.setState({ renaming: null }),
+      saveStatus: s.saveStatus, saveColor: s.saveErr ? '#FF9C8F' : ec,
+      doExport: () => this.doExport(), doImport: () => this.importRef.current && this.importRef.current.click(),
+      onImageFile: e => { const f = e.target.files[0]; if (f) this.addImage(f); e.target.value = ''; },
+      onImportFile: e => { const f = e.target.files[0]; if (f) this.doImport(f); e.target.value = ''; },
+      tools: [
+        toolBtn('select', '↖', 'SELECT', '선택 (V)', () => this.setTool('select'), active('select') && !s.space),
+        toolBtn('pan', '✥', 'PAN', '화면 이동 (H / Space)', () => this.setTool('pan'), active('pan') || s.space),
+        toolBtn('text', 'T', 'TEXT', '글 상자 (T)', () => this.setTool('text'), active('text')),
+        toolBtn('img', '▣', 'IMAGE', '사진 첨부 (I)', () => this.fileRef.current && this.fileRef.current.click(), false),
+        toolBtn('draw', '✎', 'DRAW', '그리기 (P)', () => this.setTool('draw'), active('draw')),
+        toolBtn('connect', '⟜', 'LINK', '상자 연결 (C)', () => this.setTool('connect'), active('connect')),
+        toolBtn('undo', '↶', 'UNDO', '실행 취소 (Ctrl/⌘+Z)', () => this.undo(), false),
+        toolBtn('set', '⚙', 'SET', '설정', () => this.setState({ settingsOpen: !s.settingsOpen }), s.settingsOpen),
+      ],
+      settingsOpen: s.settingsOpen, toggleSettings: () => this.setState({ settingsOpen: !s.settingsOpen }),
+      nodeSwatches: sw(PALETTE, nc, hex => this.setPref({ nodeColor: hex })),
+      edgeSwatches: sw(PALETTE, P.linked ? null : P.edgeColor, hex => this.setPref({ edgeColor: hex, linked: false })),
+      penSwatches: sw(PENS, P.penColor, hex => this.setPref({ penColor: hex })),
+      nodeName: nm(nc), edgeName: nm(ec), penName: nm(P.penColor), penColor: P.penColor, penWidth: P.penWidth, edgeOpacity: P.linked ? 0.35 : 1,
+      onPenWidth: e => this.setPref({ penWidth: +e.target.value }), onGrain: e => this.setPref({ grain: +e.target.value }),
+      toggleLinked: () => this.setPref({ linked: !P.linked }), togglePulse: () => this.setPref({ pulse: !P.pulse }),
+      linkTrack: P.linked ? rgba(nc, 0.3) : 'transparent', linkKnob: P.linked ? '20px' : '2px', linkKnobBg: P.linked ? nc : 'rgba(217,218,240,.5)',
+      pulseTrack: P.pulse ? rgba(nc, 0.3) : 'transparent', pulseKnob: P.pulse ? '20px' : '2px', pulseKnobBg: P.pulse ? nc : 'rgba(217,218,240,.5)',
+      panelOpen: selBoxes.length > 0, single: !!single, isTextSingle: !!(single && single.type === 'text'),
+      panelTitle: single ? (single.type === 'image' ? 'IMAGE' : 'TEXT') : selBoxes.length + ' SELECTED',
+      geom: single ? [{ k: 'X', v: Math.round(single.x) }, { k: 'Y', v: Math.round(single.y) }, { k: 'W', v: Math.round(single.w) }, { k: 'H', v: Math.round(single.h) }] : [],
+      formats: [F('B', '볼드', 'bold', { w: 700 }), F('I', '기울임', 'italic', { i: 1 }), F('S', '취소선', 'strike', { s: 1 }), F('H1', '제목', 'h1'), F('H2', '소제목', 'h2'),
+        F('•', '글머리표 목록', 'ul'), F('1.', '번호 목록', 'ol'), F('☐', '체크 항목', 'check'), F('❝', '인용문', 'quote'), F('<>', '인라인 코드', 'code')],
+      headSwatches, headLabel: curHead === undefined ? '혼합' : curHead ? nm(curHead) : '없음', headLabelColor: curHead || 'rgba(217,218,240,.6)',
+      panelLinks, linkCountLabel: single ? panelLinks.length + ' LINKS' : '', noLinks: single ? panelLinks.length === 0 : selBoxes.length !== 2,
+      noLinksText: single ? '연결 없음 — LINK 도구 또는 Shift로 두 상자 선택' : 'Shift로 두 상자를 선택하면 연결할 수 있어요',
+      canLink: selBoxes.length === 2 && !pairLinked,
+      linkSelected: () => { if (selBoxes.length === 2) this.addLink(s.sel[0], s.sel[1]); },
+      editLabel: s.editing && single && s.editing === single.id ? '편집 완료' : '편집 ENTER',
+      editSelected: () => { if (!single) return; if (s.editing === single.id) this.setState({ editing: null }); else this.startEdit(single.id); },
+      deleteSel: () => this.deleteSel(),
+      catIndex: String(idx + 1).padStart(2, '0') + '/' + String(n).padStart(2, '0'), catName: c.name,
+      prevCat: () => this.go(-1), nextCat: () => this.go(1),
+      zoomIn: () => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z * 1.2), zoomOut: () => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z / 1.2),
+      zoomPct: Math.round(v.z * 100) + '%', fitView: () => this.fit(), compact: (window.innerWidth || 1200) < 1000,
+      fitLabel: (window.innerWidth || 1200) < 1000 ? '⛶' : '⛶ 전체 보기', helpLabel: (window.innerWidth || 1200) < 1000 ? '?' : '? 안내',
+      helpOpen: s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }), closeHelp: e => { e.stopPropagation(); this.setState({ helpOpen: false }); },
+      helpBg: s.helpOpen ? nc : 'transparent', helpFg: s.helpOpen ? '#05060B' : '#D9DAF0',
+      connectHint: s.tool === 'connect', connectHintText: s.connectFrom ? '연결할 두 번째 상자를 누르세요 · ESC 취소' : 'LINK — 연결할 첫 번째 상자를 누르세요',
+      stop: e => e.stopPropagation(),
+      onBgDown: e => this.onBgDown(e),
+      onBgDbl: e => { if (s.tool !== 'select' || s.space) return; const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); },
+      helpGroups: [
+        { title: 'CANVAS', items: [{ k: '화면 이동', v: 'H 도구 · Space+드래그 · 휠' }, { k: '확대·축소', v: 'Ctrl/⌘ + 휠' }, { k: '전체 보기', v: '하단 버튼' }] },
+        { title: 'CATEGORY', items: [{ k: '전환', v: '빈 화면 좌우 길게 드래그' }, { k: '트랙패드', v: '수평으로 밀기' }, { k: '순서 · 이름', v: '탭 드래그 · 더블클릭' }] },
+        { title: 'TEXT BOX', items: [{ k: '생성', v: '빈 곳 더블클릭 · T' }, { k: '편집', v: '더블클릭 · Enter' }, { k: '이동 · 크기', v: '상단 손잡이 · 우하단' }] },
+        { title: 'SELECT', items: [{ k: '다중 선택', v: 'Shift + 클릭' }, { k: '삭제', v: 'Delete' }, { k: '실행 취소', v: 'Ctrl/⌘ + Z' }] },
+        { title: 'LINK', items: [{ k: '연결 도구', v: 'C → 상자 두 개 클릭' }, { k: '선택 연결', v: 'Shift 2개 → 연결 버튼' }, { k: '선 모양', v: '뉴런 곡선 · 회로(우회 직각)' }] },
+        { title: 'DRAW · SAVE', items: [{ k: '그리기', v: 'P → 드래그' }, { k: '자동 저장', v: '이 브라우저에 저장' }, { k: '백업', v: 'EXPORT · IMPORT (JSON)' }] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

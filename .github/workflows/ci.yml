@@ -1,0 +1,19 @@
+# 확인용 CI: push·PR마다 테스트와 빌드만 돌린다 (배포는 Cloudflare Pages가 GitHub 연결로 따로 함).
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

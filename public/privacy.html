@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>개인정보처리방침 — Synapse Canvas</title>
+<meta name="theme-color" content="#050509">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.75 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 6px; letter-spacing: .06em; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); font-size: 13px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  ul { padding-left: 20px; }
+  a { color: #B3ADFF; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; width: 34%; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><i></i>SYNAPSE</div>
+  <h1>개인정보처리방침</h1>
+  <p class="meta">Synapse Canvas · 시행일 2026-11-01</p>
+
+  <h2>1. 기본: 기기에만 저장</h2>
+  <p>Synapse Canvas는 동기화를 켜지 않으면 작성한 맵(글 상자, 사진, 그림, 연결선, 카테고리)과 설정을 <strong>사용 중인 기기의 브라우저 저장소(IndexedDB)에만</strong> 저장합니다. 이 경우 어떤 정보도 서버로 보내지 않습니다.</p>
+
+  <h2>2. 동기화를 켠 경우</h2>
+  <p>설정에서 동기화를 켜면 여러 기기에서 같은 맵을 쓰기 위해 아래 정보를 Supabase 서버(운영자가 만든 프로젝트)에 저장합니다.</p>
+  <table>
+    <tr><th>아이디·비밀번호</th><td>직접 정한 아이디와 비밀번호(비밀번호는 Supabase가 해시로만 보관). 아이디는 서버 내부에서 <code>아이디@users.synapse.invalid</code> 형태로 바꿔 저장하며, 실제 이메일이 아닙니다.</td></tr>
+    <tr><th>기기 열쇠</th><td>연결한 기기마다 만들어지는 익명 사용자 식별자, 기기 이름(직접 입력 또는 "iPhone Safari"처럼 자동 생성), 연결 시각, 마지막 접속 시각</td></tr>
+    <tr><th>맵 데이터</th><td>카테고리, 글 상자 내용, 위치·크기, 연결선, 펜 그림, 수정·삭제 시각, 화면 설정(색상 등)</td></tr>
+    <tr><th>사진</th><td>상자에 넣은 사진(긴 변 1200px로 줄인 JPEG)</td></tr>
+  </table>
+  <p>스팸 가입을 막기 위해 아이디 만들기·로그인·기기 연결 시 Cloudflare Turnstile(사람 확인)을 사용합니다. 이 과정에서 Cloudflare가 브라우저 정보를 처리할 수 있습니다.</p>
+
+  <h2>3. 수집하지 않는 정보</h2>
+  <ul>
+    <li>이메일 주소, 전화번호, 이름 등 다른 개인정보는 받지 않습니다.</li>
+    <li>광고·분석 도구, 추적 쿠키를 쓰지 않습니다.</li>
+  </ul>
+
+  <h2>4. 접근 범위</h2>
+  <p>서버 데이터는 행 수준 보안(RLS)으로 보호되어, 같은 보관함에 연결된 열쇠(내 아이디와 내가 연결한 기기)만 읽고 쓸 수 있습니다. 사진 저장소는 비공개입니다.</p>
+
+  <h2>5. 보관 기간과 삭제</h2>
+  <ul>
+    <li>삭제한 항목의 기록(기기 간 삭제를 맞추기 위한 표시)은 30일 뒤 정리됩니다.</li>
+    <li>설정 → 동기화 → <strong>기기 연결 해제</strong>: 그 기기의 열쇠가 삭제되어 더 이상 서버에 접근할 수 없습니다.</li>
+    <li>설정 → 동기화 → <strong>계정 삭제</strong>: 보관함, 서버의 맵 데이터, 사진, 아이디·기기 열쇠가 <strong>모두 삭제</strong>됩니다. 각 기기 안의 데이터는 그대로 남으며, 앱 안에서 지울 수 있습니다(브라우저의 사이트 데이터 삭제).</li>
+  </ul>
+
+  <h2>6. 문의</h2>
+  <p>개인정보 관련 문의: <span id="contact">운영자 연락처를 여기에 적어 주세요</span></p>
+
+  <p class="meta" style="margin-top:36px"><a href="./">← 앱으로 돌아가기</a></p>
+</main>
+</body>
+</html>

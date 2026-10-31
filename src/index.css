@@ -1,0 +1,51 @@
+/* 폰트: npm galmuri에서 필요한 3종의 woff2만 번들 (CDN·ttf 없음) */
+@font-face { font-family: Galmuri11; font-weight: 400; font-display: swap; src: url('../node_modules/galmuri/dist/Galmuri11.woff2') format('woff2'); }
+@font-face { font-family: GalmuriMono11; font-weight: 400; font-display: swap; src: url('../node_modules/galmuri/dist/GalmuriMono11.woff2') format('woff2'); }
+@font-face { font-family: GalmuriMono9; font-weight: 400; font-display: swap; src: url('../node_modules/galmuri/dist/GalmuriMono9.woff2') format('woff2'); }
+
+:root {
+  /* safe-area 값. UI 크롬은 zoom:.85 안에 있으므로 0.85로 나눠 실제 화면 기준을 맞춘다 */
+  --sat: calc(env(safe-area-inset-top, 0px) / 0.85);
+  --sab: calc(env(safe-area-inset-bottom, 0px) / 0.85);
+  --sal: calc(env(safe-area-inset-left, 0px) / 0.85);
+  --sar: calc(env(safe-area-inset-right, 0px) / 0.85);
+}
+
+html, body { margin: 0; height: 100%; background: #050509; overflow: hidden; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+body { -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#root { height: 100%; }
+a { color: #B3ADFF; }
+a:hover { color: #E4E2FF; }
+::selection { background: #5B7BE6; color: #fff; }
+input, textarea, button { outline: none; }
+textarea::placeholder { color: rgba(217,218,240,.3); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(217,218,240,.18); }
+[data-tabs]::-webkit-scrollbar { display: none; }
+button { -webkit-appearance: none; appearance: none; border-radius: 0; }
+
+/* dc.html의 style-hover — 호버 가능한 기기에서만 */
+@media (hover: hover) {
+  .hv-outline:hover { border-color: #D9DAF0 !important; }
+  .hv-ghost:hover { background: rgba(255,255,255,.06) !important; }
+  .hv-fmt:hover { border-color: #E9EAF7 !important; }
+}
+
+/* 상단 바: 기본 + safe-area */
+.topbar {
+  left: 0; right: 0; top: 0;
+  height: calc(52px + var(--sat));
+  padding: var(--sat) calc(18px + var(--sar)) 0 calc(18px + var(--sal));
+  box-sizing: border-box;
+}
+/* Windows 설치 앱(window-controls-overlay): 타이틀바 영역까지 상단 바를 올리고, 창 버튼 영역은 비운다 */
+.root.wco .topbar {
+  left: calc(env(titlebar-area-x, 0px) / 0.85);
+  right: auto;
+  width: calc(env(titlebar-area-width, 100vw) / 0.85);
+  height: max(52px, calc(env(titlebar-area-height, 52px) / 0.85));
+  padding: 0 18px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.root.wco .topbar .nodrag { -webkit-app-region: no-drag; app-region: no-drag; }

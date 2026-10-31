@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "preview", "runtimeExecutable": "npm", "runtimeArgs": ["run", "preview", "--", "--port", "4173", "--strictPort"], "port": 4173 },
+    { "name": "reference", "runtimeExecutable": "npx", "runtimeArgs": ["--yes", "serve@14.2.4", "-l", "4180", "design_handoff"], "port": 4180 }
+  ]
+}
