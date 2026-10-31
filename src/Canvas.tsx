@@ -12,6 +12,7 @@ import { loadSync, parsePair, type SyncService, type SyncStatus } from './sync';
 import { mergeData, mergePrefs, rebaseSnapshot } from './merge';
 // 동기화 화면(QR 생성·스캔 포함)은 설정을 열 때 불러온다
 const SyncPanel = React.lazy(() => import('./ui/SyncPanel'));
+const Licenses = React.lazy(() => import('./ui/Licenses'));
 import { exportBackup, validateBackup, materializeBackup } from './backup';
 import { BoxImage } from './ui/BoxImage';
 import { HELP_DESKTOP, HELP_TOUCH } from './ui/help';
@@ -40,7 +41,7 @@ type Drag =
 type State = {
   data: Data; prefs: Prefs; prefsT: PrefsT; views: Record<string, View>; active: string;
   tool: Tool; sel: string[]; editing: string | null; hover: string | null; connectFrom: string | null; mouseW: Pt | null;
-  settingsOpen: boolean; helpOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
+  settingsOpen: boolean; helpOpen: boolean; licensesOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
   swipe: number; liveStroke: [number, number][] | null; space: boolean; flash: { name: string; idx: number } | null; flashOn: boolean;
   panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
@@ -88,7 +89,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     this.state = {
       data: i.data, prefs: i.prefs, prefsT: i.prefsT, views: i.views, active: i.active,
       tool: 'select', sel: [], editing: null, hover: null, connectFrom: null, mouseW: null,
-      settingsOpen: false, helpOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
+      settingsOpen: false, helpOpen: false, licensesOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
       swipe: 0, liveStroke: null, space: false, flash: null, flashOn: false, panning: false, dragging: false,
       vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false,
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
@@ -607,7 +608,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); return; }
     if (mod) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
-    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false }); return; }
+    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false }); return; }
     if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
     const map: Record<string, Tool> = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
     const k = e.key.toLowerCase();
@@ -858,6 +859,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             <span>신호 펄스 (뉴런 발화)</span>{toggle(P.pulse)}
           </div>
           <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} /></React.Suspense>
+          <div onClick={() => this.setState({ licensesOpen: true })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: dash, paddingTop: 14, minHeight: 30, fontSize: 11, color: 'rgba(217,218,240,.6)', cursor: 'pointer' }}>
+            <span>오픈소스 라이선스</span><span style={{ color: nc }}>›</span>
+          </div>
         </div>
       </div>
     );
@@ -986,7 +990,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {/* 상단 바 — Windows 앱(window-controls-overlay)에서는 타이틀바 자리까지 이어진다 */}
         <div data-ui="1" className="topbar" onPointerDown={stop} onDoubleClick={stop} style={{ zoom: K, position: 'absolute', display: 'flex', alignItems: 'center', gap: mobile ? 10 : 18, background: 'transparent' }}>
           <div className="drag" style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11, letterSpacing: '.18em', color: nc, flex: 'none', alignSelf: 'stretch' }}>
-            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>DENDRA<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>생각을 잇는 마인드맵</span></>}
+            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>PIXIEMAP<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>생각을 잇는 로파이 마인드맵</span></>}
           </div>
           <div data-tabs="1" className="nodrag" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', touchAction: 'pan-x' }}>
             {cs.map((t, i) => {
@@ -1087,6 +1091,18 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
                     ))}
                   </div>
                 ))}
+              </div>
+              <div onClick={() => this.setState({ helpOpen: false, licensesOpen: true })} style={{ padding: '10px 16px', fontSize: 10.5, color: 'rgba(217,218,240,.5)', cursor: 'pointer', textAlign: 'right' }}>오픈소스 라이선스 ›</div>
+            </div>
+          </div>
+        )}
+
+        {s.licensesOpen && (
+          <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ licensesOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 41 }}>
+            <div onPointerDown={stop} onWheel={e => e.stopPropagation()} style={{ zoom: K, width: 'min(640px,100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc, flex: 'none' }}><span>LICENSES / 오픈소스 라이선스</span><span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => this.setState({ licensesOpen: false })}>✕</span></div>
+              <div data-scroll="1" style={{ overflow: 'auto', minHeight: 0, touchAction: 'pan-y' }}>
+                <React.Suspense fallback={null}><Licenses nc={nc} /></React.Suspense>
               </div>
             </div>
           </div>

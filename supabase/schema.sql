@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- Dendra (구 Synapse Canvas) — Supabase 스키마
+-- PixieMap (구 Synapse Canvas) — Supabase 스키마
 -- Supabase 대시보드 > SQL Editor에 이 파일 전체를 붙여넣고 Run 하면 끝납니다.
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 그대로 두거나 새로 덮어씀).
 --

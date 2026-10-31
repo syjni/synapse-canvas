@@ -1,6 +1,6 @@
-# Dendra 배포·설치 안내
+# PixieMap 배포·설치 안내
 
-서비스 주소: **https://dendra.pages.dev**
+서비스 주소: **https://pixiemap.pages.dev**
 
 계정 로그인, 결제, 스토어 제출은 직접 하셔야 합니다. 이 문서는 어디서 무엇을 누르면 되는지 순서대로 정리한 안내입니다.
 대시보드 메뉴 이름은 서비스 쪽에서 바뀔 수 있으니, 비슷한 이름을 찾아 진행해 주세요.
@@ -16,7 +16,7 @@
 | 1. Supabase 프로젝트 + `schema.sql` | 동기화를 쓸 때만 | 서버 준비 |
 | 2. Supabase 인증 설정 (이메일 확인 끄기·익명 로그인 켜기) | 동기화를 쓸 때만 | 아이디·기기 열쇠 동작 |
 | 3. `.env` 작성 (로컬 개발용) | 동기화를 쓸 때만 | 로컬에서 서버 연결 |
-| 4. Cloudflare Pages 배포 (GitHub 연결) | 필수 | `https://dendra.pages.dev` |
+| 4. Cloudflare Pages 배포 (GitHub 연결) | 필수 | `https://pixiemap.pages.dev` |
 | 5. Cloudflare Turnstile (같은 계정) → Supabase CAPTCHA 켜기 | 권장 | 스팸 가입 방지 |
 | 6. Windows 스토어 (PWABuilder → Partner Center) | 선택 | Microsoft Store 앱 |
 | 7. 각 기기 설치 | — | 홈 화면/시작 메뉴 앱 |
@@ -29,7 +29,7 @@
 ## 1. Supabase 프로젝트 만들기
 
 1. https://supabase.com 에 로그인합니다. **New project**를 누릅니다.
-   - Region: 가까운 곳(예: Northeast Asia (Seoul))
+   - Region: **Northeast Asia (Tokyo)**. 개인정보처리방침(`public/privacy.html` 3항)에 국외 이전 국가를 일본(도쿄)으로 적어 두었습니다. 다른 리전을 고르면 방침도 함께 고쳐야 합니다.
    - Database Password: 아무 강한 값 (앱에서는 쓰지 않음)
 2. 프로젝트가 만들어지면 왼쪽 메뉴에서 **SQL Editor**를 엽니다.
    1. 이 저장소의 `supabase/schema.sql` 내용을 전부 붙여넣고 **Run**을 누릅니다. "Success"가 나오면 끝입니다.
@@ -86,7 +86,7 @@ git init
 
 | 항목 | 값 |
 |---|---|
-| Project name | `dendra` → 주소가 `https://dendra.pages.dev`가 됩니다 |
+| Project name | `pixiemap` → 주소가 `https://pixiemap.pages.dev`가 됩니다 |
 | Production branch | `main` |
 | Framework preset | `None` (또는 `Vite`/`React (Vite)` — 아래 두 값만 맞으면 됩니다) |
 | Build command | `npm run build` |
@@ -105,12 +105,12 @@ git init
    - `BASE_PATH`는 **넣지 않습니다**. `*.pages.dev`는 루트(`/`)에서 서비스됩니다.
    - 동기화를 안 쓰면 Supabase 변수 두 개도 생략합니다.
    - `VITE_` 값은 **빌드할 때** 앱에 들어갑니다. 나중에 값을 바꾸면 반드시 다시 빌드해야 반영됩니다(5단계 참고).
-6. **Save and Deploy**. 1~2분 뒤 `https://dendra.pages.dev`가 열립니다.
+6. **Save and Deploy**. 1~2분 뒤 `https://pixiemap.pages.dev`가 열립니다.
 
 ### 4-3. 이후 업데이트
 
 - `main`에 push하면 Cloudflare가 자동으로 빌드·배포합니다. 설치된 앱은 다음 실행 때 새 버전으로 바뀝니다(서비스 워커 자동 업데이트).
-- 다른 브랜치에 push하면 **미리보기 배포**(`https://브랜치별이름.dendra.pages.dev`)가 따로 만들어집니다. 미리보기에도 같은 변수를 쓰려면 환경 변수를 **Preview** 환경에도 넣으세요.
+- 다른 브랜치에 push하면 **미리보기 배포**(`https://브랜치별이름.pixiemap.pages.dev`)가 따로 만들어집니다. 미리보기에도 같은 변수를 쓰려면 환경 변수를 **Preview** 환경에도 넣으세요.
   - 미리보기 주소는 따로 설치되는 앱이고, 저장소도 운영 주소와 분리됩니다.
 - 테스트(`npm test`)는 Cloudflare 빌드에서는 돌지 않습니다. GitHub에 push하면 `.github/workflows/ci.yml`이 GitHub Actions에서 테스트와 빌드를 확인합니다(배포는 하지 않음).
 - (선택) 사용자 도메인: Pages 프로젝트 → **Custom domains → Set up a custom domain**. 도메인을 붙였다면 5단계의 Turnstile Hostnames에도 추가합니다.
@@ -118,7 +118,7 @@ git init
 ### 4-4. 배포 후 확인할 것
 
 - 주소창 오른쪽에 설치 아이콘이 나오는지 (Chrome/Edge)
-- 개인정보처리방침이 열리는지: `https://dendra.pages.dev/privacy.html`. 문의 연락처 칸을 채워 두세요(`public/privacy.html`의 `id="contact"`).
+- 개인정보처리방침이 열리는지: `https://pixiemap.pages.dev/privacy.html`. 설정 맨 아래 **오픈소스 라이선스**가 열리는지(빌드할 때 `licenses.json`이 자동으로 만들어짐). 문의 연락처 칸을 채워 두세요(`public/privacy.html`의 `id="contact"`).
 - 빌드가 실패하면 Pages 프로젝트 → **Deployments** → 실패한 항목 → **View details**에서 로그를 봅니다. Node 버전 오류라면 `NODE_VERSION=22`를 확인합니다.
 
 ## 5. Cloudflare Turnstile (같은 계정) → Supabase CAPTCHA
@@ -129,9 +129,9 @@ git init
 ### 5-1. 위젯 만들기
 
 1. https://dash.cloudflare.com 왼쪽 메뉴 **Turnstile**(메뉴가 안 보이면 상단 검색창에 "Turnstile") → **Add widget**
-   - Widget name: `Dendra`
+   - Widget name: `PixieMap`
    - Hostnames (**Add hostnames**로 하나씩 추가):
-     - `dendra.pages.dev` — 4단계 주소. 하위 도메인(미리보기 배포 주소)까지 함께 허용됩니다.
+     - `pixiemap.pages.dev` — 4단계 주소. 하위 도메인(미리보기 배포 주소)까지 함께 허용됩니다.
      - `localhost` — 로컬 개발용
      - 사용자 도메인을 붙였다면 그 도메인
    - Widget Mode: **Managed**
@@ -167,7 +167,7 @@ Supabase에서 CAPTCHA를 켜면 회원 가입, 로그인, 익명 로그인 모�
 ### 6-1. 개발자 계정 (Partner Center)
 1. https://partner.microsoft.com/dashboard → **Windows & Xbox** 개발자 프로그램에 **개인(Individual)** 계정으로 등록합니다.
    - 본인 확인(신분증·셀카 등)을 요청할 수 있습니다. 등록비는 등록 화면의 안내를 따르세요. 개인 개발자 등록은 2025년부터 무료로 바뀌었다는 공지가 있었습니다.
-2. **Apps and games → New product → MSIX or PWA app** → 앱 이름(예: Dendra: Mind Map Canvas)을 **예약**합니다.
+2. **Apps and games → New product → MSIX or PWA app** → 앱 이름(예: PixieMap: Lo-fi Mind Map)을 **예약**합니다.
 3. 앱의 **Product management → Product identity**에서 다음 세 값을 메모합니다:
    - Package/Identity/Name
    - Package/Identity/Publisher (`CN=…`)
@@ -183,7 +183,7 @@ Supabase에서 CAPTCHA를 켜면 회원 가입, 로그인, 익명 로그인 모�
 ### 6-3. 제출
 Partner Center의 앱 → **Start your submission**에서:
 1. **Pricing and availability**: 무료, 시장 선택
-2. **Properties**: 카테고리(예: Productivity), 개인정보처리방침 URL = `https://dendra.pages.dev/privacy.html`
+2. **Properties**: 카테고리(예: Productivity), 개인정보처리방침 URL = `https://pixiemap.pages.dev/privacy.html`
 3. **Age ratings**: 설문 작성 (사용자 간 소통·결제 없음)
 4. **Packages**: `.msixbundle` 업로드
 5. **Store listings (한국어/영어)**: 설명 + **스크린샷 1장 이상** (1366×768 이상 권장)

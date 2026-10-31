@@ -1,4 +1,4 @@
-# Dendra (구 Synapse Canvas) — 구현 노트
+# PixieMap (구 Synapse Canvas · Dendra) — 구현 노트
 
 기준: `design_handoff/README.md`(명세)와 `design_handoff/Synapse Canvas.dc.html`(최종안).
 README와 dc.html이 다를 때는 **dc.html을 따랐습니다.**
@@ -158,6 +158,16 @@ PGlite(WASM Postgres)에 Supabase의 `auth.uid()`, `auth.users`, `storage.object
 - 브라우저 확인(닿지 않는 서버 주소로 빌드 + 만료 세션을 넣어 오프라인 상태 재현): 경고 문구·두 선택지·연결 방법별 안내 표시, 데이터 유지 로그아웃 후 동기화 정보·세션 삭제,
   데이터 지우기 후 새로고침되어 초기 예시 데이터·사진 0장. 실제 Supabase에서 기기 목록에서 빠지는 것은 PGlite 테스트로만 확인했습니다.
 - 병합 "선택" 화면은 따로 없습니다. 로그인/코드 연결은 항상 덮어쓰지 않고 병합합니다(초기 예시 데이터 그대로인 기기만 보관함 내용으로 교체).
+
+## 이름 변경(PixieMap)·오픈소스 라이선스·국외 이전 (추가)
+
+- 화면에 보이는 이름은 PixieMap(https://pixiemap.pages.dev). 데이터 호환을 위해 IndexedDB 이름, `synapse-canvas-v1`, `synapse-auth`, `synapse-sync-v1`,
+  `users.synapse.invalid`, manifest `id`, 백업 JSON의 `app: 'synapse-canvas'`는 그대로 둡니다. IMPORT는 `synapse-canvas`·`dendra`·`pixiemap`을 받습니다.
+- **오픈소스 라이선스**: `scripts/licenses.mjs`(Vite 플러그인)가 빌드 때 번들 청크에 실제로 들어간 모듈의 패키지를 모아 `dist/licenses.json`을 만듭니다
+  (이름·버전·라이선스·저작권 줄·전문). CSS로만 쓰는 갈무리 폰트와 서비스 워커에 들어가는 workbox는 모듈 그래프 밖이라 직접 지정합니다.
+  서비스 워커가 미리 캐시하므로 오프라인에서도 열립니다. 개발 서버(`npm run dev`)에서는 파일이 없어 안내 문구만 보입니다.
+  - 갈무리 저작권 표기는 패키지에 들어 있는 `ofl.md` 그대로 씁니다. 이 파일에는 Reserved Font Name 지정이 없어 따로 덧붙이지 않았습니다.
+- **개인정보처리방침**: 3항에 국외 이전(Supabase·일본 도쿄, Cloudflare Turnstile) 표를 넣고 시행일을 2026-10-31로 바꿨습니다. DEPLOY.md의 권장 리전도 도쿄로 맞췄습니다.
 
 ## 확인하지 못한 것 / 남은 한계
 
