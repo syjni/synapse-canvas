@@ -1,5 +1,5 @@
 // 기기 안 저장소. IndexedDB 관련 코드는 전부 이 파일에만 둔다.
-// 나머지 코드는 loadAll / saveAll / putImage / getImage / deleteImage / requestPersist만 사용한다.
+// 나머지 코드는 loadAll / saveAll / putImage / getImage / deleteImage / resetAll / requestPersist만 사용한다.
 import {
   type Persisted, DEF_PREFS, PREF_KEYS, zeroPrefsT, seed, normalizeData, purgeTombstones,
   referencedImages, maxStamp, observeClock, clockValue, visibleCats, uid,
@@ -105,6 +105,13 @@ export async function loadAll(): Promise<{ state: Persisted; fresh: boolean }> {
     for (const id of await listImageIds()) if (!used.has(id)) await deleteImage(id);
   } catch { /* 정리는 실패해도 무방 */ }
   return { state, fresh };
+}
+
+// 이 기기의 맵·사진을 모두 지우고 초기 예시 데이터로 (로그아웃의 "이 기기 데이터도 지우기").
+// 비워 두기만 하면 다음 시작 때 이전 버전(localStorage) 데이터를 다시 옮겨 오므로 초기 데이터를 바로 써 둔다.
+export async function resetAll(): Promise<void> {
+  await tx(IMAGES, 'readwrite', s => { s.clear(); });
+  await saveAll(finish({ schema: 2, data: seed(), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 }));
 }
 
 // 브라우저가 저장소를 임의로 비우지 않도록 영구 저장 요청 (첫 실행 시)

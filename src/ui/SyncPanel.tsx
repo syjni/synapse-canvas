@@ -5,14 +5,14 @@ import { rgba } from '../lib/color';
 import { type SyncService, type Member, checkId, checkPw, friendly, defaultDeviceName, pairUrl, parsePair, syncConfigured } from '../sync';
 import { CaptchaWidget, TURNSTILE_SITE_KEY } from '../captcha';
 
-type View = 'home' | 'enable' | 'login' | 'code' | 'pair' | 'password' | 'rekey' | 'delete' | 'scan';
-type Props = { sync: SyncService | null; nc: string; touch: boolean; initialCode?: string | null; onCodeUsed?: () => void };
+type View = 'home' | 'enable' | 'login' | 'code' | 'pair' | 'password' | 'rekey' | 'delete' | 'scan' | 'logout';
+type Props = { sync: SyncService | null; nc: string; touch: boolean; initialCode?: string | null; onCodeUsed?: () => void; onWipeLocal?: () => Promise<void> };
 
 const mono = "'GalmuriMono11',monospace";
 const dim = 'rgba(217,218,240,.6)';
 const dash = '1px dashed rgba(217,218,240,.15)';
 
-export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: Props) {
+export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, onWipeLocal }: Props) {
   const [, force] = useState(0);
   const [view, setView] = useState<View>(initialCode ? 'code' : 'home');
   const [busy, setBusy] = useState(false);
@@ -23,6 +23,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
   const [me, setMe] = useState<string | null>(null);
   const [pair, setPair] = useState<{ code: string; exp: number; qr: string } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [lo, setLo] = useState<{ pending: number; missingImages: number; wipe: boolean } | null>(null);
   const capEl = useRef<HTMLDivElement>(null);
   const cap = useRef<CaptchaWidget | null>(null);
 
@@ -114,7 +115,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
     </>);
   } else if (view === 'code') {
     body = (<>
-      <P>이미 연결된 기기에서 설정 → 동기화 → ‘다른 기기 연결’을 누르면 6자리 코드와 QR이 나옵니다.</P>
+      <P>이미 연결된 기기에서 설정 → 동기화 → ‘다른 기기 연결’을 누르면 6자리 코드와 QR이 나옵니다. 이 기기의 기존 데이터는 덮어쓰지 않고 병합합니다.</P>
       {input('code', '연결 코드 (6자리)', 'text', '000000')}
       {btn('▣ QR 스캔', () => setView('scan'), 'line')}
       {input('device', '이 기기 이름')}
@@ -169,6 +170,41 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
       }, 'fill')}
       {back}
     </>);
+  } else if (view === 'logout') {
+    const via = sync.meta?.via;
+    const option = (wipe: boolean, title: string, desc: string) => (
+      <div role="radio" aria-checked={lo?.wipe === wipe} onClick={() => setLo(x => (x ? { ...x, wipe } : x))}
+        style={{ display: 'flex', gap: 8, padding: '8px 9px', cursor: 'pointer', border: `1px solid ${lo?.wipe === wipe ? (wipe ? 'rgba(255,156,143,.6)' : nc) : 'rgba(217,218,240,.15)'}`, fontSize: 11 }}>
+        <span style={{ color: lo?.wipe === wipe ? (wipe ? '#FF9C8F' : nc) : dim, flex: 'none' }}>{lo?.wipe === wipe ? '◉' : '○'}</span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ color: wipe ? '#FF9C8F' : '#E9EAF7' }}>{title}</span>
+          <span style={{ color: 'rgba(217,218,240,.5)', fontSize: 10, lineHeight: 1.5 }}>{desc}</span>
+        </span>
+      </div>
+    );
+    body = !lo ? (<>
+      <P>대기 중인 변경을 서버에 올리는 중…</P>
+      {notes}
+      {back}
+    </>) : (<>
+      {lo.pending > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>아직 서버에 올라가지 않은 변경이 있어요. 지금 로그아웃하면 다른 기기에 반영되지 않아요.</div>}
+      {lo.missingImages > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>서버에서 받지 못한 사진 {lo.missingImages}장은 로그아웃 뒤 이 기기에서 보이지 않아요.</div>}
+      {option(false, '이 기기 데이터 유지 (기본)', '로그아웃 뒤 이 기기에만 저장하며 그대로 계속 씁니다.')}
+      {option(true, '이 기기 데이터도 지우기', '이 기기의 맵·사진·동기화 상태를 지우고 초기 예시 데이터로 돌아갑니다. 서버의 보관함은 그대로입니다.')}
+      <P>이 기기는 보관함의 기기 목록에서 빠집니다. {via === 'code' ? '다시 연결하려면 다른 기기에서 연결 코드를 받아야 해요.' : via === 'id' ? '다시 연결하려면 아이디로 로그인하면 돼요.' : '다시 연결하려면 아이디로 로그인하거나, 다른 기기에서 연결 코드를 받아야 해요.'}</P>
+      {notes}
+      {btn(busy ? '로그아웃 중…' : lo.wipe ? '로그아웃하고 이 기기 데이터 지우기' : '로그아웃', () => {
+        const wipe = lo.wipe;
+        run(async () => {
+          const r = await sync.logout();
+          if (wipe && onWipeLocal) { await onWipeLocal(); return; }
+          go('home');
+          setMsg(r.removed ? '로그아웃했습니다. 이제 이 기기에만 저장합니다.' : '로그아웃했습니다. 서버에 연결되지 않아 기기 목록에는 남아 있을 수 있어요. 다른 기기에서 해제하세요.');
+        });
+      }, lo.wipe ? 'danger' : 'fill')}
+      {lo.pending > 0 && btn('다시 올려 보기', () => startLogout(), 'line')}
+      {back}
+    </>);
   } else if (view === 'delete') {
     body = (<>
       <P>보관함과 서버의 모든 맵 데이터·사진·열쇠를 지웁니다. 연결된 모든 기기의 동기화가 끊깁니다. 이 기기 안의 데이터는 그대로 남습니다. 되돌릴 수 없습니다.</P>
@@ -182,7 +218,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
     </>);
   } else if (!connected) {
     body = (<>
-      {sync.revokedNotice && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.5 }}>이 기기의 연결이 해제되었습니다. 이 기기 안의 데이터는 그대로입니다.</div>}
+      {sync.revokedNotice && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.5 }}>다른 기기에서 이 기기의 연결을 해제해서 로그아웃되었습니다. 이 기기 안의 데이터는 그대로입니다.</div>}
       <P>동기화를 켜면 맵과 사진이 내 보관함(서버)에 저장되고, 연결한 다른 기기와 맞춰집니다. 꺼 두어도 모든 기능이 그대로 동작합니다.</P>
       {btn('동기화 켜기 — 새 아이디', () => go('enable'), 'fill')}
       {btn('다른 기기로 연결 — 코드·QR', () => go('code'))}
@@ -228,10 +264,16 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed }: 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, borderTop: dash, paddingTop: 12 }}>
         {btn('비밀번호 변경', () => go('password'), 'ghost')}
         {btn('열쇠 재발급', () => go('rekey'), 'ghost')}
-        {btn('이 기기 연결 해제', () => { if (window.confirm('이 기기의 동기화를 끊을까요? 이 기기 안의 데이터는 그대로 남습니다.')) run(() => sync.disconnectThisDevice()); }, 'ghost')}
+        {btn('로그아웃', () => startLogout(), 'ghost')}
         {btn('계정 삭제', () => { go('delete'); setF(x => ({ ...x, code: '' })); }, 'danger')}
       </div>
     </>);
+  }
+
+  function startLogout() {
+    go('logout'); setLo(null);
+    // 확인이 실패해도 로그아웃은 할 수 있게: 이때는 올라가지 않은 변경이 있다고 가정하고 경고를 띄운다
+    run(async () => { try { setLo({ ...(await sync!.prepareLogout()), wipe: false }); } catch { setLo({ pending: 1, missingImages: 0, wipe: false }); } });
   }
 
   async function makePair() {

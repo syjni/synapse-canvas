@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 // supabase-js는 동기화를 쓸 때만 따로 불러온다(첫 화면 번들을 가볍게) — 여기서는 타입만
 import type { SupabaseClient, SupportedStorage, createClient as CreateClient } from '@supabase/supabase-js';
-import type { Category, Data } from './model';
+import { alive, type Category, type Data } from './model';
 import { stableStringify, isPristineSeed, type PrefsBundle } from './merge';
 import { createImageStore, type ImageStore } from './imageStore';
 
@@ -103,6 +103,7 @@ export interface LocalImages { get(id: string): Promise<Blob | undefined>; put(i
 // 오프라인에서 바꾼 내용도 다시 켜면 그대로 올라간다.
 export type Meta = {
   vaultId: string; deviceName: string; firstSync: boolean;
+  via?: 'id' | 'code';   // 이 기기를 연결한 방법 (로그아웃 안내 문구용). 이전 버전 기록에는 없음
   versions: Record<string, number>; synced: Record<string, string>;
   prefsVersion: number; prefsHash: string; uploaded: Record<string, 1>;
 };
@@ -261,6 +262,25 @@ export class SyncEngine {
   }
 
   // 로컬에 없는 사진은 필요할 때 받아서 기기 저장소에 넣는다
+  // 아직 서버에 올라가지 않은 변경 수: 내용이 바뀐 카테고리, 설정, 이 기기에만 있는 사진
+  async pendingCount() {
+    const d = this.o.host.getData();
+    let n = d.cats.filter(c => this.meta.synced[c.id] !== hash(c)).length;
+    if (this.meta.prefsHash !== hash(this.o.host.getPrefs())) n++;
+    for (const id of liveImageIds(d)) if (!this.meta.uploaded[id] && (await this.o.local.get(id))) n++;
+    return n;
+  }
+  // 이 기기에 없는 사진을 서버에서 받아 둔다 (로그아웃 뒤 이 기기만으로 쓸 수 있게). 받지 못한 수를 돌려준다.
+  // deadline이 지나면 남은 사진은 받지 않고 못 받은 것으로 센다.
+  async downloadMissing(deadline = Infinity) {
+    let miss = 0;
+    for (const id of liveImageIds(this.o.host.getData())) {
+      if (await this.o.local.get(id)) continue;
+      if (Date.now() > deadline || !(await this.fetchImage(id))) miss++;
+    }
+    return miss;
+  }
+
   async fetchImage(id: string): Promise<Blob | null> {
     const b = await this.o.images.get(this.meta.vaultId, id).catch(() => null);
     if (b) { await this.o.local.put(id, b); this.meta.uploaded[id] = 1; this.save(); }
@@ -269,6 +289,12 @@ export class SyncEngine {
 }
 
 // ── 아이디 ↔ 이메일 ─────────────────────────────────────────────────
+const liveImageIds = (d: Data) => {
+  const ids = new Set<string>();
+  for (const c of d.cats) if (alive(c)) for (const b of c.boxes) if (alive(b) && b.imageId) ids.add(b.imageId);
+  return ids;
+};
+
 export const ID_RE = /^[a-z0-9_]{4,20}$/;
 export const idToEmail = (id: string) => `${id}@users.synapse.invalid`;
 export const checkId = (id: string) => (ID_RE.test(id) ? null : '아이디는 영문 소문자·숫자·_ 4~20자입니다.');
@@ -305,6 +331,7 @@ export function defaultDeviceName(): string {
 export type Captcha = () => Promise<string | undefined>;
 export type SyncConfig = { url: string; key: string; createClient: typeof CreateClient; storage?: SupportedStorage; metaStore?: MetaStore; local: LocalImages; pushDelay?: number; retryDelay?: number };
 type Listener = () => void;
+const AUTH_KEY = 'synapse-auth';
 
 export class SyncService {
   sb: SupabaseClient;
@@ -318,7 +345,7 @@ export class SyncService {
   private listeners = new Set<Listener>();
 
   constructor(private cfg: SyncConfig) {
-    this.sb = cfg.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'synapse-auth', storage: cfg.storage } });
+    this.sb = cfg.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: AUTH_KEY, storage: cfg.storage } });
     this.remote = supabaseRemote(this.sb);
     this.images = createImageStore(this.sb);
     this.metaStore = cfg.metaStore || localMetaStore();
@@ -350,10 +377,17 @@ export class SyncService {
   private async forgetDevice(revoked: boolean) {
     this.engine?.stop(); this.engine = null;
     this.metaStore.clear();
-    await this.sb.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    await this.dropSession();
     this.status = revoked ? 'REVOKED' : 'off';
     this.revokedNotice = revoked;
     this.emit();
+  }
+  // 기기에 저장된 세션을 지운다. 오프라인이면 supabase-js의 signOut이 토큰 갱신 실패로 세션을 남긴 채 끝나므로 저장소에서 직접 지운다.
+  private async dropSession() {
+    const r = await this.sb.auth.signOut({ scope: 'local' }).catch(error => ({ error }));
+    if (!r.error) return;
+    const st = this.cfg.storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
+    for (const k of [AUTH_KEY, AUTH_KEY + '-user', AUTH_KEY + '-code-verifier']) await Promise.resolve(st?.removeItem(k)).catch(() => undefined);
   }
   localChanged() { this.engine?.requestPush(); }
   syncNow() { return this.engine?.syncNow(); }
@@ -366,7 +400,7 @@ export class SyncService {
   private async deviceKey(captcha: Captcha) {
     const s = (await this.sb.auth.getSession()).data.session;
     if (s && s.user.is_anonymous) return s.user.id;
-    if (s) await this.sb.auth.signOut({ scope: 'local' });
+    if (s) await this.dropSession();
     const { data, error } = await this.sb.auth.signInAnonymously({ options: { captchaToken: await captcha() } });
     if (error) throw error;
     return data.user!.id;
@@ -378,8 +412,19 @@ export class SyncService {
     if (!r.ok) throw new SyncError(r.error || 'claim_failed', r.error);
     return r.vault_id!;
   }
-  private async joined(vaultId: string, deviceName: string, firstSync: boolean) {
-    const meta: Meta = { vaultId, deviceName, firstSync, versions: {}, synced: {}, prefsVersion: 0, prefsHash: '', uploaded: {} };
+  // 이 기기 열쇠로 코드를 수령한다. 남아 있던 열쇠가 다른 보관함에 묶여 있으면(오프라인에서 로그아웃해 서버에서 못 뺀 경우)
+  // 그 열쇠는 버리고 새 열쇠로 한 번 더 (already_member는 코드를 소모하지 않는다).
+  private async claimAsDevice(code: string, deviceName: string, captcha: Captcha) {
+    await this.deviceKey(captcha);
+    try { return await this.claim(this.sb, code, deviceName); } catch (e) {
+      if ((e as SyncError).code !== 'already_member') throw e;
+      await this.dropSession();
+      await this.deviceKey(captcha);
+      return this.claim(this.sb, code, deviceName);
+    }
+  }
+  private async joined(vaultId: string, deviceName: string, firstSync: boolean, via: Meta['via']) {
+    const meta: Meta = { vaultId, deviceName, firstSync, via, versions: {}, synced: {}, prefsVersion: 0, prefsHash: '', uploaded: {} };
     this.metaStore.save(meta);
     this.revokedNotice = false;
     await this.startEngine(meta);
@@ -395,10 +440,9 @@ export class SyncService {
     if (e2) throw e2;
     const { data: pc, error: e3 } = await t.rpc('create_pairing');
     if (e3) throw e3;
-    await this.deviceKey(captcha);
-    const vaultId = await this.claim(this.sb, (pc as { code: string }).code, deviceName);
+    const vaultId = await this.claimAsDevice((pc as { code: string }).code, deviceName, captcha);
     await t.auth.signOut({ scope: 'local' });
-    await this.joined(vaultId, deviceName, false);
+    await this.joined(vaultId, deviceName, false, 'id');
   }
 
   // 새 기기: 아이디로 로그인 → (임시로) 연결 코드 발급 → 이 기기 열쇠로 수령 → 로컬 데이터와 병합
@@ -408,17 +452,15 @@ export class SyncService {
     if (error) throw error;
     const { data: pc, error: e2 } = await t.rpc('create_pairing');
     if (e2) throw e2;
-    await this.deviceKey(captcha);
-    const vaultId = await this.claim(this.sb, (pc as { code: string }).code, deviceName);
+    const vaultId = await this.claimAsDevice((pc as { code: string }).code, deviceName, captcha);
     await t.auth.signOut({ scope: 'local' });
-    await this.joined(vaultId, deviceName, true);
+    await this.joined(vaultId, deviceName, true, 'id');
   }
 
   // 새 기기: 연결 코드(또는 QR)로 연결
   async connectWithCode(code: string, deviceName: string, captcha: Captcha) {
-    await this.deviceKey(captcha);
-    const vaultId = await this.claim(this.sb, code, deviceName);
-    await this.joined(vaultId, deviceName, true);
+    const vaultId = await this.claimAsDevice(code, deviceName, captcha);
+    await this.joined(vaultId, deviceName, true, 'code');
   }
 
   // 연결된 기기에서 "다른 기기 연결"
@@ -439,10 +481,41 @@ export class SyncService {
     const { error } = await this.sb.rpc('remove_member', { p_user: userId });
     if (error) throw error;
   }
-  async disconnectThisDevice() {
-    const me = await this.myUserId();
-    if (me) await this.removeMember(me);
+
+  // 로그아웃 준비: 대기 중인 변경을 올리고 이 기기에 없는 사진을 받아 둔 뒤, 남은 것을 알려 준다
+  async prepareLogout(): Promise<{ pending: number; missingImages: number }> {
+    const e = this.engine;
+    if (!e) return { pending: 0, missingImages: 0 };
+    // 오프라인이면 supabase-js가 토큰 갱신을 오래 재시도하므로 기다리는 시간을 제한한다 (남은 것은 경고로 보여 줌)
+    const limit = (p: Promise<unknown>, ms: number) => Promise.race([p, new Promise(res => setTimeout(res, ms))]);
+    await limit((async () => {
+      await e.syncNow();
+      if (await e.pendingCount()) await e.syncNow();   // 도는 중에 들어온 변경까지 한 번 더
+    })(), 8000);
+    // 사진 하나가 오래 걸려도 16초 뒤에는 "아직 이 기기에 없는 사진 수"로 답한다
+    const missingImages = await Promise.race([
+      e.downloadMissing(Date.now() + 15000),
+      new Promise<number>(res => setTimeout(() => res(e.downloadMissing(0)), 16000)),
+    ]);
+    return { pending: await e.pendingCount(), missingImages };
+  }
+  // 로그아웃: 이 기기 열쇠를 보관함에서 빼고(기기 목록에서 사라짐) 세션을 지운다.
+  // 아이디로 로그인한 기기도 이 기기에 있는 것은 기기 열쇠(익명 사용자)라서 같은 처리 — 다시 쓰려면 아이디로 로그인하면 새 열쇠가 생긴다.
+  // 동기화 상태(업로드 대기·버전·사진 업로드 표시)는 지워서 다음 로그인 때 처음 연결처럼 병합한다. 로컬 맵 데이터는 그대로.
+  // 서버에 닿지 않으면 이 기기만 로그아웃하고 removed=false (그 기기 줄은 다른 기기의 목록에서 해제할 수 있다).
+  async logout(): Promise<{ removed: boolean }> {
+    const meta = this.meta;
+    this.engine?.stop();
+    let removed = true;
+    try {
+      const me = await this.remote.userId();
+      if (me) await this.removeMember(me);
+    } catch (e) {
+      if (/last_key/.test(String((e as Error)?.message))) { if (meta?.vaultId) void this.startEngine(meta); throw e; }
+      removed = false;
+    }
     await this.forgetDevice(false);
+    return { removed };
   }
   async renameDevice(name: string) {
     const m = this.meta; if (!m) return;

@@ -339,4 +339,83 @@ describe('두 기기 동기화 (SyncEngine + schema.sql)', () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════
+describe('기기 목록과 로그아웃', () => {
+  let db: PGlite; let V: { idUser: string; vault: string };
+  beforeAll(async () => { db = await makeDb(); V = await makeVault(db, 'multi'); });
+
+  it('같은 아이디로 여러 기기에서 로그인해도 기기마다 따로 보인다', async () => {
+    // 아이디 로그인 = 아이디 열쇠가 코드를 만들고 각 기기의 익명 열쇠가 수령 (loginWithId와 같은 순서)
+    const p = await newDevice(db, V.idUser, 'Phone'), t = await newDevice(db, V.idUser, 'Tablet'), l = await newDevice(db, V.idUser, 'Laptop');
+    const list = await rows<{ user_id: string; kind: string; device_name: string }>(db, p.uid, 'select user_id, kind, device_name from public.vault_members order by created_at');
+    expect(list.filter(m => m.kind === 'password')).toHaveLength(1);
+    expect(list.filter(m => m.kind === 'device').map(m => m.device_name).sort()).toEqual(['Laptop', 'Phone', 'Tablet']);
+    expect(new Set(list.map(m => m.user_id)).size).toBe(list.length);
+    // 한 기기만 해제하면 그 기기만 빠진다
+    await one(db, p.uid, 'select public.remove_member($1)', [t.uid]);
+    const after = await rows<{ device_name: string }>(db, l.uid, `select device_name from public.vault_members where kind = 'device'`);
+    expect(after.map(m => m.device_name).sort()).toEqual(['Laptop', 'Phone']);
+  });
+
+  it('로그아웃 준비: 오프라인 변경은 대기로 남고, 온라인이면 올려서 0', async () => {
+    const a = await newDevice(db, V.idUser, 'A', custom());
+    const A = a.dev.connect(V.vault, false);
+    await A.sync();
+    expect(await A.engine.pendingCount()).toBe(0);
+    A.remote.offline = true;
+    A.setText('Mind', 'm1', '오프라인 수정');
+    await A.local.put('img-o', new Blob([new Uint8Array([9])], { type: 'image/jpeg' }));
+    A.addBox('Mind', { id: 'po', type: 'image', imageId: 'img-o' });
+    await A.sync();
+    expect(A.status).toBe('OFFLINE');
+    expect(await A.engine.pendingCount()).toBe(2);   // Mind 카테고리 + 사진 1장
+    A.remote.offline = false;
+    await A.sync();
+    expect(await A.engine.pendingCount()).toBe(0);
+  });
+
+  it('로그아웃 준비: 이 기기에 없는 사진을 받아 둔다', async () => {
+    const a = await newDevice(db, V.idUser, 'Uploader', custom());
+    const A = a.dev.connect(V.vault, false);
+    await A.local.put('img-d', new Blob([new Uint8Array([1, 2])], { type: 'image/jpeg' }));
+    A.addBox('Mind', { id: 'pd', type: 'image', imageId: 'img-d' });
+    await A.sync();
+    const b = await newDevice(db, V.idUser, 'Viewer');
+    const B = b.dev.connect(V.vault, true);
+    await B.sync();
+    expect(await B.local.get('img-d')).toBeUndefined();
+    expect(await B.engine.downloadMissing()).toBe(0);
+    expect(await B.local.get('img-d')).toBeTruthy();
+  });
+
+  it('로그아웃(데이터 유지) 뒤 다른 아이디로 로그인 → 처음 연결처럼 병합', async () => {
+    const a = await newDevice(db, V.idUser, 'Leaver', custom());
+    const A = a.dev.connect(V.vault, false);
+    A.setText('Mind', 'm2', '첫 보관함의 내용');
+    await A.sync();
+    // 로그아웃: 이 기기 열쇠를 보관함에서 빼고 동기화 상태 초기화 (SyncService.logout과 같은 순서)
+    A.engine.stop();
+    await one(db, a.uid, 'select public.remove_member($1)', [a.uid]);
+    A.metaBox.m = null;
+    expect(await rows(db, V.idUser, 'select 1 from public.vault_members where user_id = $1', [a.uid])).toHaveLength(0);
+    A.setText('Mind', 'm3', '로그아웃 뒤 로컬 수정');
+    // 다른 아이디의 보관함(이미 데이터가 있음)으로 로그인
+    const W = await makeVault(db, 'other');
+    const o = await newDevice(db, W.idUser, 'OtherDev', custom());
+    const O = o.dev.connect(W.vault, false);
+    O.setText('Ideas', 'i1', '두 번째 보관함의 내용');
+    await O.sync();
+    const n = await newDevice(db, W.idUser, 'Leaver again', A.data);
+    const N = n.dev.connect(W.vault, true);
+    await N.sync(); await O.sync();
+    // 서로 다른 보관함의 카테고리는 id가 달라 둘 다 남는다(덮어쓰지 않음). 양쪽 기기가 같은 내용으로 맞춰진다.
+    const ids = (d: Device) => d.data.cats.filter(alive).map(c => c.id).sort();
+    expect(ids(N)).toEqual(ids(O));
+    for (const c of A.data.cats.filter(alive)) expect(ids(O)).toContain(c.id);
+    const texts = (d: Device) => d.data.cats.filter(alive).flatMap(c => c.boxes.filter(alive).map(b => b.text));
+    for (const d of [N, O]) expect(texts(d)).toEqual(expect.arrayContaining(['첫 보관함의 내용', '로그아웃 뒤 로컬 수정', '두 번째 보관함의 내용']));
+    expect([N.status, O.status]).toEqual(['SYNCED', 'SYNCED']);
+  });
+});
+
 void as;

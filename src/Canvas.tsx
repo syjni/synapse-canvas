@@ -7,7 +7,7 @@ import {
   type Data, type Category, type Box, type Prefs, type PrefsT, type View, type Persisted,
   tick, uid, alive, visibleCats, liveBoxes, liveLinks, liveStrokes, stampChanges, applyTarget, clockValue,
 } from './model';
-import { saveAll, putImage, getImage, requestPersist } from './storage';
+import { saveAll, putImage, getImage, requestPersist, resetAll } from './storage';
 import { loadSync, parsePair, type SyncService, type SyncStatus } from './sync';
 import { mergeData, mergePrefs, rebaseSnapshot } from './merge';
 // 동기화 화면(QR 생성·스캔 포함)은 설정을 열 때 불러온다
@@ -219,17 +219,25 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       return { prefs: { ...s.prefs, ...p }, prefsT };
     }, () => this.scheduleSave());
   }
+  // 로그아웃 "이 기기 데이터도 지우기": 저장을 멈추고 기기 저장소를 초기 예시 데이터로 바꾼 뒤 다시 시작
+  wiping = false;
+  wipeLocal = async () => {
+    this.wiping = true; clearTimeout(this.saveT); this.saveT = 0;
+    await resetAll();
+    location.reload();
+  };
   persisted(): Persisted {
     const s = this.state;
     return { schema: 2, data: s.data, prefs: s.prefs, prefsT: s.prefsT, views: s.views, active: s.active, clock: clockValue() };
   }
   scheduleSave() {
+    if (this.wiping) return;
     if (this.state.saveStatus !== 'SAVING…' && !this.state.saveErr) this.setState({ saveStatus: 'SAVING…' });
     clearTimeout(this.saveT);
     this.saveT = window.setTimeout(() => this.flushSave(), 500);
   }
   flushSave() {
-    if (!this.saveT) return;
+    if (!this.saveT || this.wiping) return;
     clearTimeout(this.saveT); this.saveT = 0;
     saveAll(this.persisted()).then(
       () => { this.setState({ saveStatus: 'SAVED ' + hhmm(), saveErr: false }); this.sync?.localChanged(); },
@@ -849,7 +857,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           <div onClick={() => this.setPref({ pulse: !P.pulse })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
             <span>신호 펄스 (뉴런 발화)</span>{toggle(P.pulse)}
           </div>
-          <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} /></React.Suspense>
+          <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} /></React.Suspense>
         </div>
       </div>
     );
