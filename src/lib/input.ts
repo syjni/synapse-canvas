@@ -31,3 +31,23 @@ export function mouseAction(p: { part: Part; button: number; tool: Tool; space: 
   if (tool === 'connect') return 'connect-cancel';
   return 'click-pan';
 }
+
+// ── PAN 도구 더블클릭 → 글 상자 ─────────────────────
+// PAN 도구는 누르는 순간부터 화면 이동이라 브라우저 dblclick(끈 뒤에도 발생)을 쓰지 않고 누름·뗌으로 직접 판정한다.
+// 두 클릭의 뗀 시각 간격 ≤ 300ms, 누른 위치 차이 ≤ 6px, 두 번 모두 누른 동안 3px 미만으로 움직였을 때만.
+export const DBL_CLICK_MS = 300, DBL_CLICK_DIST = 6, CLICK_MOVE = 3;
+// Space를 누른 임시 이동·가운데 버튼은 제외
+export const panDoubleClickable = (p: { tool: Tool; space: boolean; button: number }) => p.tool === 'pan' && !p.space && p.button === 0;
+
+export class DoubleClick {
+  private last: { t: number; x: number; y: number } | null = null;
+  // 클릭(pointerup)마다 호출. x·y는 누른 위치, moved는 누른 동안 가장 멀리 움직인 거리. 더블클릭이면 true
+  up(c: { t: number; x: number; y: number; moved: number }): boolean {
+    if (c.moved >= CLICK_MOVE) { this.last = null; return false; }   // 화면을 끌어 옮긴 클릭은 세지 않고, 다음 클릭부터 새로
+    const l = this.last;
+    if (l && c.t - l.t <= DBL_CLICK_MS && Math.hypot(c.x - l.x, c.y - l.y) <= DBL_CLICK_DIST) { this.last = null; return true; }
+    this.last = { t: c.t, x: c.x, y: c.y };
+    return false;
+  }
+  reset() { this.last = null; }
+}

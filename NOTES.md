@@ -214,6 +214,14 @@ PGlite(WASM Postgres)에 Supabase의 `auth.uid()`, `auth.users`, `storage.object
 - 사진: 업로드는 기존대로 카테고리에 살아 있는 상자의 사진만 → 버린 이 기기 상자의 사진은 올라가지 않음 (테스트로 확인)
 - 테스트: `tests/sync.test.ts`의 "새로 연결한 기기" 4개 + 순수 함수 2개, `tests/backup-local.test.ts` 3개 (fake-indexeddb). 기존 "다른 아이디로 로그인" 테스트는 묻고 → 추가하는 흐름으로 바꿈
 
+## PAN 도구 더블클릭으로 글 상자 (추가)
+- PAN 도구는 누르는 순간 화면 이동이고 브라우저 dblclick은 끈 뒤에도 발생하므로, 마우스·펜은 `DoubleClick`(src/lib/input.ts)으로 직접 판정
+  - 두 클릭의 뗀 시각 간격 ≤ 300ms, 누른 위치 차이 ≤ 6px, 두 번 모두 누른 동안 3px 미만 이동. 끌어서 옮긴 클릭은 판정을 처음부터 다시
+  - Space 임시 이동·가운데 버튼은 제외(`panDoubleClickable`), 뗄 때 Space가 눌려 있어도 만들지 않음
+- 터치: PAN 도구 탭은 8px 움직이기 전까지 화면 이동이 아니므로 SELECT와 같은 두 번 탭 판정(`isDouble`, 320ms·30px)을 그대로 씀
+- 위치·크기·편집 진입은 `createText` 그대로, `keepTool`로 도구는 PAN 유지 (SELECT·TEXT 도구에서 만들 때는 이전처럼 SELECT로)
+- 브라우저에서 실제 더블클릭·드래그 후 클릭·Space 누른 채 더블클릭·SELECT 더블클릭 확인
+
 ## 확인하지 못한 것 / 남은 한계
 
 - **실제 Supabase로는 돌려 보지 못했습니다.** Docker Desktop이 이 PC에서 켜지지 않았고, Supabase 계정·프로젝트도 없습니다. 그래서 아래는 아직 실제 서버에서 확인하지 않았습니다.

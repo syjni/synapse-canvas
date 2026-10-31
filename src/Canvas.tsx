@@ -17,7 +17,7 @@ const Licenses = React.lazy(() => import('./ui/Licenses'));
 import { exportBackup, validateBackup, materializeBackup } from './backup';
 import { BoxImage } from './ui/BoxImage';
 import { HELP_DESKTOP, HELP_TOUCH } from './ui/help';
-import { mouseAction, type Tool } from './lib/input';
+import { mouseAction, panDoubleClickable, DoubleClick, type Tool } from './lib/input';
 
 // ── 디자인 상수 (dc.html) ─────────────────────────────
 const K = 0.85;              // 전역 85% 스케일
@@ -34,7 +34,7 @@ const LONG_PRESS = 480;
 const DOUBLE_TAP = 320;
 
 type Drag =
-  | { type: 'pan'; id: number; sx: number; sy: number; ox: number; oy: number; tap?: boolean; click?: boolean; shift?: boolean; moved?: boolean }
+  | { type: 'pan'; id: number; sx: number; sy: number; ox: number; oy: number; tap?: boolean; click?: boolean; shift?: boolean; moved?: boolean; dbl?: boolean; far?: number }
   | { type: 'draw'; id: number }
   | { type: 'swipe'; id: number; sx: number; sy: number; dx?: number; dy?: number }
   | { type: 'edge'; id: number; sx: number; sy: number; dx?: number; dy?: number }
@@ -73,6 +73,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   pinch: { d0: number; z0: number; wx: number; wy: number } | null = null;
   ignoreTouches = false;
   lastTap: { t: number; x: number; y: number; target: string } | null = null;
+  panDbl = new DoubleClick();   // PAN 도구(마우스·펜) 빈 곳 더블클릭
   lastTabTap: { t: number; id: string } | null = null;
   longT = 0;
   penSeen = false;
@@ -381,12 +382,13 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   }
 
   // ── 동작 ────────────────────────────────────────────
-  createText(wx: number, wy: number) {
+  // keepTool: PAN 도구에서 만들 때는 도구를 SELECT로 바꾸지 않는다
+  createText(wx: number, wy: number, keepTool = false) {
     const id = uid();
     this.updCat(c => ({ ...c, boxes: [...c.boxes, { id, type: 'text', x: Math.round(wx - 110), y: Math.round(wy - 14), w: 220, h: 110, text: '', head: null, updatedAt: 0, deletedAt: null }] }));
     this.focusEdit = true;
     // 터치 기기에서 화면 키보드가 뜨려면 포커스가 사용자 입력 처리 안에서 동기적으로 일어나야 한다
-    flushSync(() => this.setState({ sel: [id], editing: id, tool: 'select' }));
+    flushSync(() => this.setState(s => ({ sel: [id], editing: id, tool: keepTool ? s.tool : 'select' })));
   }
   startEdit(id: string) { this.snapshot(); this.focusEdit = true; flushSync(() => this.setState({ editing: id, sel: [id] })); }
   addLink(a: string, b: string) {
@@ -553,7 +555,11 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     switch (mouseAction({ part: 'bg', button: e.button, tool, space })) {
       // 우클릭 드래그: 도구와 상관없이 좌우로 끌어 카테고리 전환 (상자 위에서 눌러도 여기로 온다)
       case 'swipe': this.drag = { type: 'swipe', id, sx: e.clientX, sy: e.clientY }; return;
-      case 'pan': e.preventDefault(); this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y }; this.setState({ panning: true }); return;
+      case 'pan':
+        e.preventDefault();
+        this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, dbl: panDoubleClickable({ tool, space, button: e.button }), far: 0 };
+        this.setState({ panning: true });
+        return;
       case 'draw': startDraw(); return;
       case 'text': { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
       case 'connect-cancel': this.setState({ connectFrom: null }); return;
@@ -569,9 +575,10 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const { tool } = this.state;
     if (tool === 'text') { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
     if (tool === 'connect') { this.setState({ connectFrom: null }); return; }
-    if (tool !== 'select') return;
-    if (this.isDouble(e, 'bg')) { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
-    this.setState({ sel: [], editing: null });
+    if (tool !== 'select' && tool !== 'pan') return;
+    // PAN 도구 터치: 탭은 움직이기 전까지(8px) 화면 이동이 아니므로 SELECT와 같은 두 번 탭 판정. 도구는 PAN 그대로
+    if (this.isDouble(e, 'bg')) { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y, tool === 'pan'); return; }
+    if (tool === 'select') this.setState({ sel: [], editing: null });
   }
 
   onMove(e: PointerEvent) {
@@ -585,6 +592,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (d.type === 'draw') { const w = this.toWorld(e.clientX, e.clientY); this.setState(s => { const p = s.liveStroke; if (!p) return null; const l = p[p.length - 1]; return Math.hypot(w.x - l[0], w.y - l[1]) * z > 2 ? { liveStroke: [...p, [w.x, w.y]] } : null; }); return; }
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
     if (d.type === 'pan') {
+      if (d.dbl) d.far = Math.max(d.far || 0, Math.hypot(dx, dy));
       const slop = d.tap ? 8 : d.click ? CLICK_SLOP : 0;
       if (slop && !d.moved) { if (Math.hypot(dx, dy) < slop) return; d.moved = true; this.setState({ panning: true }); }
       this.setViewUser({ x: d.ox + dx, y: d.oy + dy });
@@ -634,6 +642,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       this.setState({ panning: false });
       if (d.tap && !d.moved && !cancel) this.bgTap(e);
       if (d.click && !d.moved && !cancel && !d.shift) this.setState({ sel: [] });
+      if (d.dbl && !cancel && !this.state.space) {
+        if (this.panDbl.up({ t: Date.now(), x: d.sx, y: d.sy, moved: d.far || 0 })) { const w = this.toWorld(d.sx, d.sy); this.createText(w.x, w.y, true); }
+      } else if (e.pointerType !== 'touch') this.panDbl.reset();   // Space·가운데 버튼 이동이나 취소 사이에 낀 클릭은 이어서 세지 않는다
     }
     if (d.type === 'draw') {
       const pts = this.state.liveStroke || []; const { penColor, penWidth } = this.state.prefs;
