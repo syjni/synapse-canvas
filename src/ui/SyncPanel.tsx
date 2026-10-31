@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { rgba } from '../lib/color';
-import { type SyncService, type Member, checkId, checkPw, friendly, defaultDeviceName, pairUrl, parsePair, syncConfigured } from '../sync';
+import { type SyncService, type Member, checkId, checkPw, friendly, isRateLimited, defaultDeviceName, pairUrl, parsePair, syncConfigured } from '../sync';
 import { CaptchaWidget, TURNSTILE_SITE_KEY } from '../captcha';
 
 type View = 'home' | 'enable' | 'login' | 'code' | 'pair' | 'password' | 'rekey' | 'delete' | 'scan' | 'logout';
@@ -23,6 +23,8 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   const [me, setMe] = useState<string | null>(null);
   const [pair, setPair] = useState<{ code: string; exp: number; qr: string } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [lockUntil, setLockUntil] = useState(0);   // 429를 받으면 30초 동안 가입·로그인 버튼 잠금
+  const busyRef = useRef(false);                    // 같은 프레임 안의 두 번 클릭도 막는다
   const [lo, setLo] = useState<{ pending: number; missingImages: number; wipe: boolean } | null>(null);
   const capEl = useRef<HTMLDivElement>(null);
   const cap = useRef<CaptchaWidget | null>(null);
@@ -37,6 +39,11 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
     return () => { w.unmount(); cap.current = null; };
   }, [needCaptcha, view]);
   useEffect(() => { if (!pair) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [pair]);
+  useEffect(() => {
+    if (lockUntil <= Date.now()) return;
+    const t = setInterval(() => { setNow(Date.now()); if (Date.now() >= lockUntil) clearInterval(t); }, 1000);
+    return () => clearInterval(t);
+  }, [lockUntil]);
 
   const connected = !!sync?.connected;
   const loadMembers = async () => {
@@ -51,10 +58,18 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
 
   const go = (v: View) => { setErr(null); setMsg(null); setF(x => ({ ...x, pw: '', pw2: '', old: '', device: x.device || sync.meta?.deviceName || defaultDeviceName() })); setView(v); };
   const captcha = () => (cap.current ? cap.current.get() : Promise.resolve(undefined));
+  // 요청은 한 번만 보낸다(실패해도 자동 재시도 없음). 도는 동안 버튼은 비활성.
   const run = async (fn: () => Promise<void>, done?: string) => {
-    setBusy(true); setErr(null); setMsg(null);
-    try { await fn(); if (done) setMsg(done); } catch (e) { setErr(friendly(e)); } finally { setBusy(false); }
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setErr(null); setMsg(null);
+    try { await fn(); if (done) setMsg(done); } catch (e) {
+      setErr(friendly(e));
+      if (isRateLimited(e)) { setLockUntil(Date.now() + 30000); setNow(Date.now()); }
+    } finally { busyRef.current = false; setBusy(false); }
   };
+  const lockLeft = Math.max(0, Math.ceil((lockUntil - now) / 1000));
+  // 가입·로그인처럼 서버 인증을 쓰는 버튼: 429 뒤에는 남은 초를 보여 주며 잠근다
+  const authBtn = (label: string, onClick: () => void) => btn(lockLeft > 0 ? `${lockLeft}초 뒤 다시 시도할 수 있어요` : label, onClick, 'fill', lockLeft > 0);
   const device = () => (f.device.trim() || defaultDeviceName()).slice(0, 40);
 
   const input = (key: keyof typeof f, label: string, type = 'text', ph = '') => (
@@ -88,16 +103,16 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
     body = <Scanner nc={nc} onCode={c => { setF(x => ({ ...x, code: c })); setView('code'); }} onCancel={() => setView('code')} />;
   } else if (view === 'enable') {
     body = (<>
-      <P>아이디·비밀번호는 다른 기기를 연결할 때 쓰는 열쇠입니다. 이메일은 받지 않습니다.</P>
+      <P>아이디·비밀번호는 다른 기기를 연결할 때 쓰는 열쇠입니다. 아이디와 비밀번호 말고 다른 개인정보는 받지 않습니다.</P>
       {input('id', '아이디 (영문 소문자·숫자·_ 4~20자)', 'text', 'my_id')}
       {input('pw', '비밀번호 (6자 이상)', 'password')}
       {input('pw2', '비밀번호 확인', 'password')}
       {input('device', '이 기기 이름')}
       {notes}
-      {btn(busy ? '만드는 중…' : '보관함 만들고 동기화 켜기', () => {
+      {authBtn(busy ? '만드는 중…' : '보관함 만들고 동기화 켜기', () => {
         if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
         run(async () => { await sync.enable(f.id, f.pw, device(), captcha); go('home'); });
-      }, 'fill')}
+      })}
       {back}
     </>);
   } else if (view === 'login') {
@@ -107,10 +122,10 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       {input('pw', '비밀번호', 'password')}
       {input('device', '이 기기 이름')}
       {notes}
-      {btn(busy ? '연결 중…' : '로그인하고 연결', () => {
+      {authBtn(busy ? '연결 중…' : '로그인하고 연결', () => {
         if (!validate(checkId(f.id), f.pw ? null : '비밀번호를 입력하세요.')) return;
         run(async () => { await sync.loginWithId(f.id, f.pw, device(), captcha); go('home'); });
-      }, 'fill')}
+      })}
       {back}
     </>);
   } else if (view === 'code') {
@@ -120,10 +135,10 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       {btn('▣ QR 스캔', () => setView('scan'), 'line')}
       {input('device', '이 기기 이름')}
       {notes}
-      {btn(busy ? '연결 중…' : '연결', () => {
+      {authBtn(busy ? '연결 중…' : '연결', () => {
         const c = parsePair(f.code); if (!validate(c ? null : '6자리 숫자 코드를 입력하세요.')) return;
         run(async () => { await sync.connectWithCode(c!, device(), captcha); go('home'); });
-      }, 'fill')}
+      })}
       {back}
     </>);
   } else if (view === 'pair') {
@@ -150,11 +165,11 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       {input('pw', '새 비밀번호 (6자 이상)', 'password')}
       {input('pw2', '새 비밀번호 확인', 'password')}
       {notes}
-      {btn(busy ? '바꾸는 중…' : '비밀번호 변경', () => {
+      {authBtn(busy ? '바꾸는 중…' : '비밀번호 변경', () => {
         const id = f.id || loginId;
         if (!validate(checkId(id), f.old ? null : '현재 비밀번호를 입력하세요.', checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
         run(() => sync.changePassword(id, f.old, f.pw, captcha), '비밀번호를 바꿨습니다.');
-      }, 'fill')}
+      })}
       {back}
     </>);
   } else if (view === 'rekey') {
@@ -164,10 +179,10 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       {input('pw', '새 비밀번호 (6자 이상)', 'password')}
       {input('pw2', '새 비밀번호 확인', 'password')}
       {notes}
-      {btn(busy ? '재발급 중…' : '새 열쇠 만들기', () => {
+      {authBtn(busy ? '재발급 중…' : '새 열쇠 만들기', () => {
         if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
         run(async () => { await sync.rekey(f.id, f.pw, captcha); await loadMembers(); }, `새 아이디 ‘${f.id}’로 바꿨습니다.`);
-      }, 'fill')}
+      })}
       {back}
     </>);
   } else if (view === 'logout') {

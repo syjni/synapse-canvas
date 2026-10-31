@@ -25,14 +25,17 @@ const SHOW_GRID = true;
 const MOBILE = 640;          // 이 폭 미만은 하단 툴바 + 하단 시트
 const EDGE_ZONE = 24;        // 터치 가장자리 스와이프 영역(px)
 const EDGE_SWIPE = 90;       // 가장자리 스와이프 전환 거리
+const MOUSE_SWIPE = 120;     // 우클릭 드래그 전환 거리 (진행 바가 가득 차는 값이기도 함)
+const WHEEL_SWIPE = 260;     // Space + 두 손가락 스와이프 전환 누적값
+const CLICK_SLOP = 3;        // 이보다 적게 움직이면 클릭(선택 해제), 넘으면 화면 이동
 const LONG_PRESS = 480;
 const DOUBLE_TAP = 320;
 
 type Tool = 'select' | 'pan' | 'text' | 'draw' | 'connect';
 type Drag =
-  | { type: 'pan'; id: number; sx: number; sy: number; ox: number; oy: number; tap?: boolean; moved?: boolean }
+  | { type: 'pan'; id: number; sx: number; sy: number; ox: number; oy: number; tap?: boolean; click?: boolean; shift?: boolean; moved?: boolean }
   | { type: 'draw'; id: number }
-  | { type: 'swipe'; id: number; sx: number; sy: number; shift: boolean; dx?: number; dy?: number }
+  | { type: 'swipe'; id: number; sx: number; sy: number; dx?: number; dy?: number }
   | { type: 'edge'; id: number; sx: number; sy: number; dx?: number; dy?: number }
   | { type: 'move'; id: number; sx: number; sy: number; orig: Record<string, { x: number; y: number }>; pushed?: boolean }
   | { type: 'resize'; id: number; sx: number; sy: number; box: string; ow: number; oh: number; pushed?: boolean }
@@ -75,7 +78,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   userMoved = false;
   focusEdit = false;
   focusRename = false;
-  saveT = 0; flashT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0;
+  saveT = 0; flashT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0; swipeEndAt = 0;
   dragTab: string | null = null;
   sizeNoise: (() => void) | null = null;
   off: (() => void)[] = [];
@@ -114,7 +117,13 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     on('pointerup', e => this.onUp(e));
     on('pointercancel', e => this.onUp(e, true));
     on('keydown', e => this.onKey(e));
-    on('keyup', e => { if (e.code === 'Space') this.setState({ space: false }); });
+    on('keyup', e => {
+      if (e.code !== 'Space') return;
+      const tag = (e.target as Element).tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA') e.preventDefault();   // 포커스된 버튼이 눌리는 등 기본 동작 막기
+      this.wAcc = 0; this.setState({ space: false, swipe: 0 });
+    });
+    on('blur', () => { if (this.state.space) this.setState({ space: false, swipe: 0 }); });
     on('wheel', e => this.onWheel(e), { passive: false });
     on('resize', () => { this.sizeNoise?.(); this.setState({ vw: window.innerWidth, vh: window.innerHeight }); if (!this.userMoved) this.fit(); });
     // Safari 페이지 핀치 확대 막기 (캔버스 핀치는 직접 처리)
@@ -472,13 +481,16 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, tap: true };
       return;
     }
+    // 우클릭 드래그: 도구와 상관없이 좌우로 끌어 카테고리 전환 (상자 위에서 눌러도 여기로 온다)
+    if (e.button === 2) { this.drag = { type: 'swipe', id, sx: e.clientX, sy: e.clientY }; return; }
     if (e.button !== 0 && e.button !== 1) return;
     if (e.button === 1 || space || tool === 'pan') { e.preventDefault(); this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y }; this.setState({ panning: true }); return; }
     if (tool === 'draw') { startDraw(); return; }
     if (tool === 'text') { const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); return; }
     if (tool === 'connect') { this.setState({ connectFrom: null }); return; }
+    // SELECT 도구로 빈 곳 좌클릭: 3px 넘게 끌면 화면 이동, 아니면 클릭(선택 해제)
     this.setState({ editing: null });
-    this.drag = { type: 'swipe', id, sx: e.clientX, sy: e.clientY, shift: e.shiftKey };
+    this.drag = { type: 'pan', id, sx: e.clientX, sy: e.clientY, ox: v.x, oy: v.y, click: true, shift: e.shiftKey };
   }
   // 터치 탭(움직임 없음) 처리: 도구별로 마우스 클릭과 같은 결과
   bgTap(e: PointerEvent) {
@@ -501,11 +513,12 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (d.type === 'draw') { const w = this.toWorld(e.clientX, e.clientY); this.setState(s => { const p = s.liveStroke; if (!p) return null; const l = p[p.length - 1]; return Math.hypot(w.x - l[0], w.y - l[1]) * z > 2 ? { liveStroke: [...p, [w.x, w.y]] } : null; }); return; }
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
     if (d.type === 'pan') {
-      if (d.tap && !d.moved) { if (Math.hypot(dx, dy) < 8) return; d.moved = true; this.setState({ panning: true }); }
+      const slop = d.tap ? 8 : d.click ? CLICK_SLOP : 0;
+      if (slop && !d.moved) { if (Math.hypot(dx, dy) < slop) return; d.moved = true; this.setState({ panning: true }); }
       this.setViewUser({ x: d.ox + dx, y: d.oy + dy });
     }
     else if (d.type === 'swipe') { if (Math.abs(dx) > 8) this.setState({ swipe: dx }); d.dx = dx; d.dy = dy; }
-    else if (d.type === 'edge') { d.dx = dx; d.dy = dy; this.setState({ swipe: Math.abs(dx) > 6 ? dx * (180 / EDGE_SWIPE) : 0 }); }
+    else if (d.type === 'edge') { d.dx = dx; d.dy = dy; this.setState({ swipe: Math.abs(dx) > 6 ? dx * (MOUSE_SWIPE / EDGE_SWIPE) : 0 }); }
     else if (d.type === 'boxTouch') {
       if (d.consumed) {
         // 내용이 넘치는 상자 본문은 손가락으로 세로 스크롤
@@ -551,6 +564,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (d.type === 'pan') {
       this.setState({ panning: false });
       if (d.tap && !d.moved && !cancel) this.bgTap(e);
+      if (d.click && !d.moved && !cancel && !d.shift) this.setState({ sel: [] });
     }
     if (d.type === 'draw') {
       const pts = this.state.liveStroke || []; const { penColor, penWidth } = this.state.prefs;
@@ -559,10 +573,11 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       this.setState({ liveStroke: null });
     }
     if (d.type === 'swipe') {
+      // 오른쪽으로 끌면 이전, 왼쪽으로 끌면 다음. 기준에 못 미치면 제자리로
       const dx = d.dx || 0, dy = d.dy || 0;
       this.setState({ swipe: 0 });
-      if (Math.abs(dx) > 180 && Math.abs(dx) > Math.abs(dy) * 1.5) this.go(dx < 0 ? 1 : -1);
-      else if (Math.hypot(dx, dy) < 5 && !d.shift) this.setState({ sel: [] });
+      this.swipeEndAt = Date.now();
+      if (!cancel && Math.abs(dx) >= MOUSE_SWIPE && Math.abs(dx) > Math.abs(dy) * 1.5) this.go(dx < 0 ? 1 : -1);
     }
     if (d.type === 'edge') {
       const dx = d.dx || 0, dy = d.dy || 0;
@@ -581,33 +596,41 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (d.type === 'move' || d.type === 'resize') this.setState({ dragging: false });
   }
 
+  // 트랙패드 두 손가락 이동·마우스 휠: deltaX·deltaY 그대로 자유 이동 (OS 관성 스크롤이 그대로 반영됨)
+  // Ctrl/⌘ + 휠(트랙패드 오므리기): 커서 기준 확대. Space를 누른 채 좌우 스와이프: 카테고리 전환 전용(화면은 안 움직임)
   onWheel(e: WheelEvent) {
     const t = e.target as Element;
     if (t.closest && t.closest('[data-ui]')) return;
     const sc = t.closest && t.closest('[data-scroll]');
-    if (sc && sc.scrollHeight > sc.clientHeight + 1 && !e.ctrlKey && !e.metaKey) return;
+    if (sc && sc.scrollHeight > sc.clientHeight + 1 && !e.ctrlKey && !e.metaKey && !this.state.space) return;
     e.preventDefault();
+    // 줄·페이지 단위(일부 마우스·Firefox)는 픽셀로 환산
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+    let ddx = e.deltaX * unit, ddy = e.deltaY * unit;
     const v = this.view();
-    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, v.z * Math.exp(-e.deltaY * 0.01)); return; }
-    if (!e.shiftKey && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.5 && Math.abs(e.deltaX) > 4) {
-      this.wAcc = (this.wAcc || 0) + e.deltaX;
+    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, v.z * Math.exp(-ddy * 0.01)); return; }
+    // Shift + 세로 휠 = 가로 이동 (브라우저가 이미 가로로 바꿔 준 경우는 그대로)
+    if (e.shiftKey && !ddx) { ddx = ddy; ddy = 0; }
+    if (this.state.space) {
       clearTimeout(this.wT); this.wT = window.setTimeout(() => { this.wAcc = 0; this.setState({ swipe: 0 }); }, 220);
-      if (Date.now() < (this.wCool || 0)) return;
-      this.setState({ swipe: -this.wAcc * 0.8 });
-      if (Math.abs(this.wAcc) > 260) { this.go(this.wAcc > 0 ? 1 : -1); this.wAcc = 0; this.wCool = Date.now() + 700; this.setState({ swipe: 0 }); }
+      if (Date.now() < this.wCool) return;
+      this.wAcc += ddx;
+      this.setState({ swipe: -this.wAcc * (MOUSE_SWIPE / WHEEL_SWIPE) });
+      if (Math.abs(this.wAcc) > WHEEL_SWIPE) { this.go(this.wAcc > 0 ? 1 : -1); this.wAcc = 0; this.wCool = Date.now() + 700; this.setState({ swipe: 0 }); }
       return;
     }
-    if (e.shiftKey) this.setViewUser({ x: v.x - e.deltaY });
-    else this.setViewUser({ x: v.x - e.deltaX, y: v.y - e.deltaY });
+    this.setViewUser({ x: v.x - ddx, y: v.y - ddy });
   }
   onKey(e: KeyboardEvent) {
     const tag = (e.target as Element).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable) return;
     const mod = e.ctrlKey || e.metaKey;
     if (e.code === 'Space') { e.preventDefault(); if (!this.state.space) this.setState({ space: true }); return; }
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); return; }
     if (mod) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
+    if (e.key === 'Escape' && (this.drag?.type === 'swipe' || this.wAcc)) { this.drag = null; this.wAcc = 0; this.setState({ swipe: 0 }); return; }
+    if (e.key === '[' || e.key === ']') { e.preventDefault(); this.go(e.key === ']' ? 1 : -1); return; }
     if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false }); return; }
     if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
     const map: Record<string, Tool> = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
@@ -625,6 +648,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
 
   // 상자 위 포인터: 마우스/펜은 dc.html과 같이 즉시 처리, 터치는 탭·길게 누르기·끌기를 구분
   onBoxDown(e: React.PointerEvent, b: Box, part: 'body' | 'handle' | 'resize') {
+    if (e.pointerType === 'mouse' && e.button === 2) return;   // 우클릭 드래그는 배경 핸들러(카테고리 전환)로
     if (this.touchBlocked(e)) return;
     const s = this.state;
     if (e.pointerType === 'pen' && !s.space && s.tool !== 'pan' && s.tool !== 'select' && s.tool !== 'connect') return;
@@ -959,13 +983,17 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     return (
       <div className={'root' + (s.wco ? ' wco' : '')} style={{ position: 'fixed', inset: 0, background: '#050509', overflow: 'hidden', cursor, userSelect: 'none', WebkitUserSelect: 'none', fontFamily: "'GalmuriMono11','Galmuri11',monospace", color: '#D9DAF0', touchAction: 'none' }}
         onPointerDown={e => this.onBgDown(e)}
-        onContextMenu={e => { if (this.lastPT !== 'mouse') e.preventDefault(); }}
+        onContextMenu={e => {
+          // 캔버스에서는 브라우저 메뉴를 막는다(우클릭 = 카테고리 전환). 입력칸·패널에서는 그대로 두되, 우클릭 드래그가 패널 위에서 끝난 경우는 막음
+          const t = e.target as Element;
+          if (this.lastPT !== 'mouse' || Date.now() - this.swipeEndAt < 400 || !t.closest('[data-ui], textarea, input')) e.preventDefault();
+        }}
         onDoubleClick={e => { if (this.lastPT === 'touch' || s.tool !== 'select' || s.space) return; const w = this.toWorld(e.clientX, e.clientY); this.createText(w.x, w.y); }}>
         <div style={{ position: 'absolute', width: '62vw', height: '62vw', left: '-18vw', top: '-24vw', borderRadius: '50%', background: nc, filter: 'blur(90px)', opacity: 0.2, pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', width: '55vw', height: '55vw', right: '-20vw', bottom: '-26vw', borderRadius: '50%', background: ec, filter: 'blur(100px)', opacity: 0.18, pointerEvents: 'none' }} />
         {SHOW_GRID && <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(220,222,255,.10) 1px, transparent 1.2px)', backgroundSize: `${g}px ${g}px`, backgroundPosition: `${v.x}px ${v.y}px`, pointerEvents: 'none' }} />}
 
-        <div style={{ position: 'absolute', inset: 0, transform: `translateX(${s.swipe * 0.35}px)`, opacity: Math.max(0.35, 1 - swAbs / 500), pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', inset: 0, transform: `translateX(${s.swipe * 0.35}px)`, opacity: Math.max(0.35, 1 - swAbs / 500), transition: s.swipe ? 'none' : 'transform .2s ease-out, opacity .2s', pointerEvents: 'none' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${v.x}px, ${v.y}px) scale(${ze})`, transformOrigin: '0 0', pointerEvents: 'auto' }}>
             {this.linksSvg(ec, c, boxes)}
             {boxes.map((b, i) => this.renderBox(b, i, nc, ec, ze))}
@@ -979,7 +1007,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {swAbs > 30 && (
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, pointerEvents: 'none' }}>
             <div style={{ fontFamily: "'GalmuriMono11',monospace", fontSize: 13, letterSpacing: '.2em', color: nc }}>{(sd > 0 ? 'NEXT → ' : '← PREV ') + (target ? target.name.toUpperCase() : '')}</div>
-            <div style={{ width: 180, height: 3, background: 'rgba(217,218,240,.12)' }}><div style={{ height: 3, width: Math.min(100, (swAbs / 180) * 100) + '%', background: nc, boxShadow: `0 0 10px ${nc}` }} /></div>
+            <div style={{ width: 180, height: 3, background: 'rgba(217,218,240,.12)' }}><div style={{ height: 3, width: Math.min(100, (swAbs / MOUSE_SWIPE) * 100) + '%', background: nc, boxShadow: `0 0 10px ${nc}` }} /></div>
           </div>
         )}
         <div style={{ position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', opacity: s.flashOn ? 1 : 0, transition: 'opacity .6s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>

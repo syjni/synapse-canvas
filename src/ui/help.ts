@@ -1,9 +1,9 @@
 export type HelpGroup = { title: string; items: { k: string; v: string }[] };
 
-// dc.html 안내 그대로 (자동 저장 문구만 기기 저장으로 변경)
+// 마우스·트랙패드 안내 (dc.html 안내를 바탕으로 이동·카테고리 전환 방식만 바꿈)
 export const HELP_DESKTOP: HelpGroup[] = [
-  { title: 'CANVAS', items: [{ k: '화면 이동', v: 'H 도구 · Space+드래그 · 휠' }, { k: '확대·축소', v: 'Ctrl/⌘ + 휠' }, { k: '전체 보기', v: '하단 버튼' }] },
-  { title: 'CATEGORY', items: [{ k: '전환', v: '빈 화면 좌우 길게 드래그' }, { k: '트랙패드', v: '수평으로 밀기' }, { k: '순서 · 이름', v: '탭 드래그 · 더블클릭' }] },
+  { title: 'CANVAS', items: [{ k: '화면 이동', v: '빈 곳 드래그 · Space/가운데 버튼 + 드래그' }, { k: '트랙패드', v: '두 손가락으로 어느 방향이든' }, { k: '확대·축소', v: 'Ctrl/⌘ + 휠 · 두 손가락 오므리기' }, { k: '전체 보기', v: '하단 버튼' }] },
+  { title: 'CATEGORY', items: [{ k: '전환', v: '우클릭한 채 좌우로 끌기' }, { k: '트랙패드', v: 'Space + 두 손가락 좌우' }, { k: '키보드 · 버튼', v: '[ ] · 탭 · PREV/NEXT' }, { k: '순서 · 이름', v: '탭 드래그 · 더블클릭' }] },
   { title: 'TEXT BOX', items: [{ k: '생성', v: '빈 곳 더블클릭 · T' }, { k: '편집', v: '더블클릭 · Enter' }, { k: '이동 · 크기', v: '상단 손잡이 · 우하단' }] },
   { title: 'SELECT', items: [{ k: '다중 선택', v: 'Shift + 클릭' }, { k: '삭제', v: 'Delete' }, { k: '실행 취소', v: 'Ctrl/⌘ + Z' }] },
   { title: 'LINK', items: [{ k: '연결 도구', v: 'C → 상자 두 개 클릭' }, { k: '선택 연결', v: 'Shift 2개 → 연결 버튼' }, { k: '선 모양', v: '뉴런 곡선 · 회로(우회 직각)' }] },

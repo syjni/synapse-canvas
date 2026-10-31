@@ -300,23 +300,38 @@ export const idToEmail = (id: string) => `${id}@users.synapse.invalid`;
 export const checkId = (id: string) => (ID_RE.test(id) ? null : '아이디는 영문 소문자·숫자·_ 4~20자입니다.');
 export const checkPw = (pw: string) => (pw.length >= 6 ? null : '비밀번호는 6자 이상입니다.');
 
+// Supabase 오류 → 화면 문구. error_code(code)를 먼저 보고, 예전 버전처럼 code가 없으면 메시지로 판단한다.
+// 아이디는 내부에서 가짜 이메일로 바뀌므로 화면 문구에는 "이메일"이라는 말을 쓰지 않는다.
+const RATE_CODES = ['over_request_rate_limit', 'over_email_send_rate_limit', 'over_sms_send_rate_limit'];
+const errParts = (e: unknown) => ({
+  m: String((e as { message?: string })?.message || e || ''),
+  c: String((e as { code?: string })?.code || ''),
+  st: Number((e as { status?: number })?.status || 0),
+});
+// 요청이 너무 많음(429) — 화면에서 버튼을 잠시 잠근다
+export function isRateLimited(e: unknown) {
+  const { m, c, st } = errParts(e);
+  return st === 429 || RATE_CODES.includes(c) || /rate limit/i.test(m);
+}
 export function friendly(e: unknown): string {
-  const m = String((e as { message?: string })?.message || e || '');
-  const c = String((e as { code?: string })?.code || '');
-  if (/already registered|already exists|user_already_exists/i.test(m + c)) return '이미 있는 아이디입니다.';
-  if (/invalid login credentials|invalid_credentials/i.test(m + c)) return '아이디 또는 비밀번호가 맞지 않습니다.';
-  if (/captcha/i.test(m)) return '사람 확인(CAPTCHA)에 실패했습니다. 다시 시도해 주세요.';
-  if (/anonymous sign-ins are disabled|anonymous_provider_disabled/i.test(m + c)) return '서버에서 익명 로그인이 꺼져 있습니다 (DEPLOY.md 참고).';
-  if (/signups not allowed|signup_disabled/i.test(m + c)) return '서버에서 회원 가입이 꺼져 있습니다 (DEPLOY.md 참고).';
-  if (/email not confirmed|email_not_confirmed/i.test(m + c)) return '서버에서 이메일 확인을 꺼야 합니다 (DEPLOY.md 참고).';
-  if (/invalid_code/.test(m)) return '코드가 맞지 않거나 만료되었습니다.';
-  if (/too_many_attempts/.test(m)) return '시도가 너무 많습니다. 10분 뒤 다시 해 주세요.';
-  if (/last_key/.test(m)) return '마지막 열쇠는 해제할 수 없습니다. 계정 삭제를 사용하세요.';
-  if (/rate limit|over_request_rate_limit|too many/i.test(m + c)) return '요청이 너무 많습니다. 잠시 뒤 다시 해 주세요.';
-  if (/same_password|should be different/i.test(m + c)) return '새 비밀번호가 이전과 같습니다.';
-  if (/weak_password/i.test(m + c)) return '비밀번호가 너무 약합니다.';
-  if (/fetch|network|load failed|timeout/i.test(m)) return '서버에 연결할 수 없습니다. 인터넷 연결 또는 서버 상태(일시정지)를 확인하세요.';
-  return m || '알 수 없는 오류';
+  const { m, c } = errParts(e);
+  const has = (re: RegExp) => re.test(c) || re.test(m);
+  if (isRateLimited(e)) return '잠시 후 다시 시도해주세요';
+  if (has(/^(user_already_exists|email_exists)$|already registered|already exists/i)) return '이미 사용 중인 아이디예요';
+  if (has(/^weak_password$/)) return '비밀번호가 너무 짧아요 (6자 이상)';
+  if (has(/^invalid_credentials$|invalid login credentials/i)) return '아이디 또는 비밀번호가 맞지 않아요';
+  if (has(/^same_password$|should be different/i)) return '새 비밀번호가 이전과 같아요';
+  if (has(/^email_address_invalid$/)) return '쓸 수 없는 아이디예요';
+  if (has(/^captcha_failed$|captcha/i)) return '사람 확인(CAPTCHA)에 실패했어요. 다시 시도해주세요';
+  if (has(/^anonymous_provider_disabled$|anonymous sign-ins are disabled/i)) return '서버에서 익명 로그인이 꺼져 있어요 (DEPLOY.md 2단계 참고)';
+  if (has(/^signup_disabled$|signups not allowed/i)) return '서버에서 가입이 꺼져 있어요 (DEPLOY.md 2단계 참고)';
+  if (has(/^email_not_confirmed$|email not confirmed/i)) return '서버 설정 때문에 가입을 마칠 수 없어요 (DEPLOY.md 2단계의 확인 기능 끄기 참고)';
+  if (has(/invalid_code/)) return '코드가 맞지 않거나 만료되었어요';
+  if (has(/too_many_attempts/)) return '시도가 너무 많아요. 10분 뒤 다시 해주세요';
+  if (has(/last_key/)) return '마지막 열쇠는 해제할 수 없어요. 계정 삭제를 사용하세요';
+  if (has(/fetch|network|load failed|timeout|^offline$/i)) return '서버에 연결할 수 없어요. 인터넷 연결 또는 서버 상태(일시정지)를 확인하세요';
+  console.error('[PixieMap] 동기화 오류', c || '(code 없음)', m);
+  return '연결에 실패했어요';
 }
 
 export function defaultDeviceName(): string {
