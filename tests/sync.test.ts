@@ -3,13 +3,14 @@ import type { PGlite } from '@electric-sql/pglite';
 import { makeDb, addUser, one, rows, as, PgRemote, PgImages, memLocalImages } from './pg';
 import { SyncEngine, type Host, type Meta, type MetaStore, type SyncStatus } from '../src/sync';
 import { mergeData, mergePrefs, mergeCategory, rebaseSnapshot, isPristineSeed, type PrefsBundle } from '../src/merge';
-import { type Data, type Category, type Box, seed, stampChanges, tick, DEF_PREFS, zeroPrefsT, liveLinks, alive } from '../src/model';
+import { type Data, type Category, type Box, seed, stampChanges, tick, DEF_PREFS, zeroPrefsT, liveLinks, liveBoxes, alive, applyTarget } from '../src/model';
+import { addToAccount, planJoin, JOIN_GAP, type JoinPlan } from '../src/join';
 
 // ── 기기 대역 ────────────────────────────────────────────────────────
 class Device {
   data: Data; pb: PrefsBundle = { prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT() };
   remote: PgRemote; engine!: SyncEngine; status: SyncStatus = 'off'; revoked = false;
-  local = memLocalImages(); metaBox: { m: Meta | null } = { m: null };
+  local = memLocalImages(); metaBox: { m: Meta | null } = { m: null }; asked: JoinPlan[] = [];
   constructor(public db: PGlite, public uid: string, data: Data) {
     this.data = data;
     this.remote = new PgRemote(db, uid);
@@ -19,10 +20,11 @@ class Device {
     const host: Host = {
       getData: () => this.data,
       getPrefs: () => this.pb,
-      applyRemote: async (cats, p, replace) => {
-        this.data = replace ? { cats } : mergeData(this.data, cats);
+      applyRemote: async (cats, p, mode) => {
+        this.data = mode === 'replace' ? { cats } : mode === 'add' ? addToAccount(this.data, cats).data : mergeData(this.data, cats);
         if (p) this.pb = mergePrefs(this.pb, p);
       },
+      askJoin: plan => { this.asked.push(plan); },
     };
     this.engine = new SyncEngine({
       remote: this.remote, images: new PgImages(this.db, this.uid, this.remote), local: this.local, metaStore: store, host,
@@ -407,14 +409,132 @@ describe('기기 목록과 로그아웃', () => {
     await O.sync();
     const n = await newDevice(db, W.idUser, 'Leaver again', A.data);
     const N = n.dev.connect(W.vault, true);
-    await N.sync(); await O.sync();
-    // 서로 다른 보관함의 카테고리는 id가 달라 둘 다 남는다(덮어쓰지 않음). 양쪽 기기가 같은 내용으로 맞춰진다.
+    await N.sync();
+    // 이 기기에만 있는 내용이 있으므로 묻고, 고르기 전에는 올리지 않는다
+    expect(N.status).toBe('WAITING');
+    expect(N.asked).toHaveLength(1);
+    await N.engine.choose('add'); await O.sync();
+    // 같은 이름 카테고리는 계정 쪽으로 합쳐져 중복 탭이 생기지 않고, 양쪽 기기가 같은 내용으로 맞춰진다
     const ids = (d: Device) => d.data.cats.filter(alive).map(c => c.id).sort();
     expect(ids(N)).toEqual(ids(O));
-    for (const c of A.data.cats.filter(alive)) expect(ids(O)).toContain(c.id);
+    expect(N.data.cats.filter(c => alive(c) && c.name === 'Mind')).toHaveLength(1);
     const texts = (d: Device) => d.data.cats.filter(alive).flatMap(c => c.boxes.filter(alive).map(b => b.text));
     for (const d of [N, O]) expect(texts(d)).toEqual(expect.arrayContaining(['첫 보관함의 내용', '로그아웃 뒤 로컬 수정', '두 번째 보관함의 내용']));
     expect([N.status, O.status]).toEqual(['SYNCED', 'SYNCED']);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════
+describe('새로 연결한 기기: 이 기기 내용을 어떻게 할지 묻기', () => {
+  let db: PGlite; let V: { idUser: string; vault: string }; let O: Device;
+  const serverCats = async () => (await rows<{ data: Category }>(db, V.idUser, 'select data from public.categories where vault_id = $1', [V.vault])).map(r => r.data);
+  const names = (d: Device) => d.data.cats.filter(alive).map(c => c.name);
+  beforeAll(async () => {
+    db = await makeDb();
+    V = await makeVault(db, 'joiner');
+    const o = await newDevice(db, V.idUser, 'Owner', custom());
+    O = o.dev.connect(V.vault, false);
+    O.setText('Mind', 'm1', '계정에서 고친 m1');
+    await O.sync();
+  });
+
+  it('손대지 않은 초기 예시만 있으면 묻지 않고 계정 내용으로 교체', async () => {
+    const n = await newDevice(db, V.idUser, 'Fresh');
+    const N = n.dev.connect(V.vault, true);
+    await N.sync();
+    expect(N.asked).toHaveLength(0);
+    expect(N.status).toBe('SYNCED');
+    expect(N.box('Mind', 'm1')!.text).toBe('계정에서 고친 m1');
+    expect(new Set(names(N)).size).toBe(names(N).length);
+  });
+
+  it('로그아웃(데이터 유지) 뒤 같은 아이디로 다시 로그인하면 묻지 않는다', async () => {
+    const a = await newDevice(db, V.idUser, 'Laptop');
+    const A = a.dev.connect(V.vault, true);
+    await A.sync();
+    // 로그아웃: 열쇠를 보관함에서 빼고 동기화 상태 초기화. 로컬 데이터는 그대로
+    A.engine.stop();
+    await one(db, a.uid, 'select public.remove_member($1)', [a.uid]);
+    const before = await serverCats();
+    // 같은 아이디로 다시 로그인 = 새 기기 열쇠 + 같은 로컬 데이터
+    const b = await newDevice(db, V.idUser, 'Laptop', A.data);
+    const B = b.dev.connect(V.vault, true);
+    await B.sync();
+    expect(B.asked).toHaveLength(0);
+    expect(B.status).toBe('SYNCED');
+    expect(new Set(names(B)).size).toBe(names(B).length);
+    expect((await serverCats()).map(c => c.id).sort()).toEqual(before.map(c => c.id).sort());
+  });
+
+  it('새 상자가 있으면 묻고, 고르기 전에는 올리지 않으며, 계정에 추가하면 기존 내용과 겹치지 않게 놓는다', async () => {
+    const n = await newDevice(db, V.idUser, 'Tablet');
+    const N = n.dev;
+    N.addBox('Mind', { id: 'n1', x: 0, y: 0, w: 220, h: 110, text: '태블릿에서 만든 상자' });   // 예시 상자 m1과 겹치는 자리
+    N.addBox('Mind', { id: 'n2', x: 0, y: 200, w: 100, h: 60, text: '둘째' });
+    const cid = N.cat('Mind').id;
+    N.edit(d => ({ cats: d.cats.map(c => (c.id === cid ? { ...c, links: [...c.links, { id: 'ln', a: 'n1', b: 'm1', updatedAt: 0, deletedAt: null }] } : c)) }));
+    const before = await serverCats();
+    N.connect(V.vault, true);
+    await N.sync(); await N.sync();   // 다시 동기화해도 창은 한 번만, 업로드도 없음
+    expect(N.status).toBe('WAITING');
+    expect(N.asked).toHaveLength(1);
+    // 예시 상자(m1~)와 예시 연결선은 이미 있는 것으로 본다 → 새 상자 2개 + 새 연결선 1개만
+    expect(N.asked[0].mine).toEqual({ cats: 0, boxes: 2, links: 1, strokes: 0, newer: 0 });
+    expect(N.asked[0].account).toEqual({ cats: 6, boxes: 8 });
+    expect(await serverCats()).toEqual(before);
+
+    await N.engine.choose('add');
+    expect(N.status).toBe('SYNCED');
+    expect(new Set(names(N)).size).toBe(names(N).length);
+    const server = (await serverCats()).find(c => c.name === 'Mind')!;
+    const old = liveBoxes(server).filter(b => b.text !== '태블릿에서 만든 상자' && b.text !== '둘째');
+    const fresh = liveBoxes(server).filter(b => b.text === '태블릿에서 만든 상자' || b.text === '둘째');
+    expect(fresh).toHaveLength(2);
+    const right = Math.max(...old.map(b => b.x + b.w));
+    expect(Math.min(...fresh.map(b => b.x))).toBe(right + JOIN_GAP);
+    const n1 = fresh.find(b => b.text === '태블릿에서 만든 상자')!, n2 = fresh.find(b => b.text === '둘째')!;
+    expect([n2.x - n1.x, n2.y - n1.y]).toEqual([0, 200]);   // 서로의 상대 위치 유지
+    for (const f of fresh) for (const b of old) expect(f.x < b.x + b.w && b.x < f.x + f.w && f.y < b.y + b.h && b.y < f.y + f.h).toBe(false);
+    expect(server.boxes.find(b => b.id === 'm1')!.text).toBe('계정에서 고친 m1');   // 계정 내용은 덮어쓰지 않음
+    expect(liveLinks(server).some(l => l.a === n1.id && l.b === 'm1')).toBe(true);
+    await O.sync();
+    expect(O.cat('Mind').boxes.filter(alive)).toHaveLength(6);
+  });
+
+  it('계정 내용만 불러오기: 이 기기 내용은 올리지 않고, 사진도 새 상자 것만 올린다', async () => {
+    const n = await newDevice(db, V.idUser, 'Phone');
+    const N = n.dev;
+    await N.local.put('img-drop', new Blob([new Uint8Array([7])], { type: 'image/jpeg' }));
+    N.addBox('Ideas', { id: 'p1', type: 'image', imageId: 'img-drop' });
+    N.connect(V.vault, true);
+    await N.sync();
+    expect(N.asked).toHaveLength(1);
+    const before = await serverCats();
+    await N.engine.choose('replace');
+    expect(N.status).toBe('SYNCED');
+    expect(N.data.cats.flatMap(c => c.boxes).some(b => b.id === 'p1')).toBe(false);
+    expect((await serverCats()).map(c => c.id).sort()).toEqual(before.map(c => c.id).sort());
+    expect(await rows(db, V.idUser, `select 1 from storage.objects where name like '%img-drop%'`)).toHaveLength(0);
+  });
+});
+
+describe('계정에 추가하기 (순수 함수)', () => {
+  it('서버에 없는 이름의 카테고리는 탭 끝에 새로, 실행 취소(base)로 추가 전으로', () => {
+    const acc = seed(), mine = seed();
+    const books: Category = { id: 'bk', name: 'Books', order: 1, updatedAt: tick(), deletedAt: null, links: [], strokes: [], boxes: [{ id: 'b1', type: 'text', x: 0, y: 0, w: 100, h: 50, text: '책', updatedAt: tick(), deletedAt: null }] };
+    const r = addToAccount({ cats: [...mine.cats, books] }, acc.cats);
+    expect(r.added).toEqual({ cats: 1, boxes: 1, links: 0, strokes: 0 });   // 손대지 않은 예시 카테고리는 더하지 않음
+    const live = r.data.cats.filter(alive).sort((a, b) => a.order - b.order);
+    expect(live.map(c => c.name)).toEqual(['Mind', 'Ideas', 'Schedule', 'Custom 1', 'Custom 2', 'Custom 3', 'Books']);
+    expect(r.touched).toEqual(['bk']);
+    const undone = applyTarget(r.data, r.base);
+    expect(undone.cats.find(c => c.id === 'bk')!.deletedAt).not.toBeNull();
+    expect(undone.cats.filter(alive).map(c => c.id).sort()).toEqual(acc.cats.map(c => c.id).sort());
+    expect(planJoin({ cats: [...mine.cats, books] }, acc.cats).ask).toBe(true);
+  });
+  it('계정이 비어 있으면 묻지 않는다', () => {
+    const d = seed(); d.cats[0] = { ...d.cats[0], name: '바꿈' };
+    expect(planJoin(d, []).ask).toBe(false);
   });
 });
 

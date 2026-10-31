@@ -11,6 +11,7 @@ import type { SupabaseClient, SupportedStorage, createClient as CreateClient } f
 import { alive, type Category, type Data } from './model';
 import { stableStringify, isPristineSeed, type PrefsBundle } from './merge';
 import { createImageStore, type ImageStore } from './imageStore';
+import { planJoin, type JoinPlan } from './join';
 
 // ── 서버 접근 (테스트에서 다른 구현으로 바꿔 끼울 수 있게 인터페이스로) ──
 export type Member = { vault_id: string; user_id: string; kind: 'password' | 'device'; login_id: string | null; device_name: string; created_at: string; last_seen_at: string };
@@ -88,14 +89,20 @@ export function supabaseRemote(sb: SupabaseClient): Remote {
 }
 
 // ── 동기화 엔진 ─────────────────────────────────────────────────────
-export type SyncStatus = 'off' | 'SYNCED' | 'SYNCING…' | 'OFFLINE' | 'REVOKED';
+// WAITING: 새로 연결한 기기에서 이 기기 내용을 어떻게 할지 고르기 전 (업로드 보류)
+export type SyncStatus = 'off' | 'SYNCED' | 'SYNCING…' | 'OFFLINE' | 'REVOKED' | 'WAITING';
+// merge: 일반 동기화 / replace: 받은 것으로 교체 / add: 이 기기 내용을 계정에 더하기(join.ts addToAccount)
+export type ApplyMode = 'merge' | 'replace' | 'add';
+export type JoinChoice = 'add' | 'replace';
 
 // 화면(Canvas)이 엔진에 제공하는 것
 export interface Host {
   getData(): Data;
   getPrefs(): PrefsBundle;
-  // 받은 카테고리·설정을 현재 상태에 병합해 저장한다. replace=true면 로컬 카테고리를 버리고 받은 것으로 교체(초기 예시 데이터일 때).
-  applyRemote(cats: Category[], prefs: PrefsBundle | null, replace?: boolean): Promise<void>;
+  // 받은 카테고리·설정을 현재 상태에 반영해 저장한다 (mode는 ApplyMode 참고, 기본 merge)
+  applyRemote(cats: Category[], prefs: PrefsBundle | null, mode?: ApplyMode): Promise<void>;
+  // 새로 연결한 기기에 이 기기에서 만든 내용이 있을 때: 선택 화면을 띄운다 (답은 SyncService.chooseJoin)
+  askJoin?(plan: JoinPlan): void;
 }
 export interface LocalImages { get(id: string): Promise<Blob | undefined>; put(id: string, blob: Blob): Promise<void> }
 
@@ -134,6 +141,9 @@ export class SyncEngine {
   private retryT: ReturnType<typeof setTimeout> | null = null;
   private lastTouch = 0;
   stopped = false;
+  waiting: JoinPlan | null = null;   // 선택을 기다리는 중 (이때는 올리지 않는다)
+  private choice: JoinChoice | null = null;
+  private asked = false;             // 이번 실행에서 이미 물었으면 창을 닫아도 다시 띄우지 않는다 (다음 실행 때 다시)
 
   constructor(private o: {
     remote: Remote; images: ImageStore; local: LocalImages; metaStore: MetaStore; host: Host; meta: Meta;
@@ -151,6 +161,8 @@ export class SyncEngine {
   }
   // 시작·포커스·온라인 복귀 시: 원격 확인 + 업로드
   syncNow() { return this.run(true); }
+  // 선택 화면의 답: 다시 받아서 고른 방식으로 반영한 뒤 올린다
+  choose(c: JoinChoice) { this.choice = c; return this.run(true); }
   stop() { this.stopped = true; if (this.pushT) clearTimeout(this.pushT); if (this.retryT) clearTimeout(this.retryT); }
 
   // 동시에 하나만 돈다. 도는 중에 요청이 오면 끝난 뒤 한 번 더.
@@ -160,8 +172,10 @@ export class SyncEngine {
     this.running = (async () => {
       this.setStatus('SYNCING…');
       try {
-        if (pull) await this.pull();
+        // 첫 동기화를 마치기 전에는 항상 먼저 받고, 선택을 기다리는 동안에는 올리지 않는다
+        if (pull || this.meta.firstSync) await this.pull();
         if (this.stopped) return;
+        if (this.waiting) { this.setStatus('WAITING'); return; }
         await this.push();
         if (this.stopped) return;
         this.setStatus('SYNCED');
@@ -198,11 +212,29 @@ export class SyncEngine {
     const rows = need.length ? await remote.fetchCategories(v, need) : [];
     const p = await remote.getPrefs(v);
     const newPrefs = p && p.version !== this.meta.prefsVersion ? p : null;
-    // 새 기기의 첫 동기화: 고치지 않은 초기 예시 데이터는 병합하지 않고 보관함 내용으로 교체
-    const replace = this.meta.firstSync && vers.length > 0 && isPristineSeed(host.getData());
-    if (rows.length || newPrefs || replace) {
-      const all = replace && rows.length < vers.length ? [...rows, ...(await remote.fetchCategories(v, vers.map(r => r.id).filter(id => !need.includes(id))))] : rows;
-      await host.applyRemote(all.map(r => r.data), newPrefs ? newPrefs.data : null, replace);
+    // 새 기기의 첫 동기화 (firstSync면 versions가 비어 있어 rows = 서버 전체)
+    // - 고치지 않은 초기 예시 데이터 → 묻지 않고 보관함 내용으로 교체
+    // - 이 기기에만 있거나 이 기기에서 더 최근에 고친 항목이 있으면 → 고를 때까지 기다린다
+    // - 그 외 → 계정에 더하기(새로 더할 것이 없으므로 일반 병합과 같은 결과)
+    let mode: ApplyMode = 'merge';
+    if (this.meta.firstSync && vers.length > 0) {
+      const local = host.getData();
+      if (isPristineSeed(local)) mode = 'replace';
+      else if (this.choice) mode = this.choice;
+      else {
+        const plan = planJoin(local, rows.map(r => r.data));
+        if (plan.ask) {
+          this.waiting = plan;
+          if (!this.asked) { this.asked = true; host.askJoin?.(plan); }
+          return;
+        }
+        mode = 'add';
+      }
+    }
+    this.waiting = null;
+    if (rows.length || newPrefs || mode !== 'merge') {
+      const all = mode !== 'merge' && rows.length < vers.length ? [...rows, ...(await remote.fetchCategories(v, vers.map(r => r.id).filter(id => !need.includes(id))))] : rows;
+      await host.applyRemote(all.map(r => r.data), newPrefs ? newPrefs.data : null, mode);
       for (const r of all) { this.meta.versions[r.id] = r.version; this.meta.synced[r.id] = hash(r.data); }
       if (newPrefs) { this.meta.prefsVersion = newPrefs.version; this.meta.prefsHash = hash(newPrefs.data); }
     }
@@ -405,6 +437,10 @@ export class SyncService {
     for (const k of [AUTH_KEY, AUTH_KEY + '-user', AUTH_KEY + '-code-verifier']) await Promise.resolve(st?.removeItem(k)).catch(() => undefined);
   }
   localChanged() { this.engine?.requestPush(); }
+  // 새로 연결한 기기의 선택 대기
+  get joinPending() { return this.engine?.waiting ?? null; }
+  chooseJoin(c: JoinChoice) { return this.engine?.choose(c); }
+  reopenJoin() { const w = this.engine?.waiting; if (w) this.host?.askJoin?.(w); }
   syncNow() { return this.engine?.syncNow(); }
   async fetchImage(id: string) { return this.engine ? this.engine.fetchImage(id) : null; }
 

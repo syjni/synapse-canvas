@@ -4,15 +4,21 @@ import jsQR from 'jsqr';
 import { rgba } from '../lib/color';
 import { type SyncService, type Member, checkId, checkPw, friendly, isRateLimited, defaultDeviceName, pairUrl, parsePair, syncConfigured } from '../sync';
 import { CaptchaWidget, TURNSTILE_SITE_KEY } from '../captcha';
+import { listLocalBackups } from '../storage';
+import { alive } from '../model';
 
 type View = 'home' | 'enable' | 'login' | 'code' | 'pair' | 'password' | 'rekey' | 'delete' | 'scan' | 'logout';
-type Props = { sync: SyncService | null; nc: string; touch: boolean; initialCode?: string | null; onCodeUsed?: () => void; onWipeLocal?: () => Promise<void> };
+type Props = {
+  sync: SyncService | null; nc: string; touch: boolean; initialCode?: string | null; onCodeUsed?: () => void; onWipeLocal?: () => Promise<void>;
+  onRestoreBackup?: (id: string) => Promise<number>;
+};
+type BackupRow = { id: string; at: number; boxes: number };
 
 const mono = "'GalmuriMono11',monospace";
 const dim = 'rgba(217,218,240,.6)';
 const dash = '1px dashed rgba(217,218,240,.15)';
 
-export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, onWipeLocal }: Props) {
+export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, onWipeLocal, onRestoreBackup }: Props) {
   const [, force] = useState(0);
   const [view, setView] = useState<View>(initialCode ? 'code' : 'home');
   const [busy, setBusy] = useState(false);
@@ -26,10 +32,17 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   const [lockUntil, setLockUntil] = useState(0);   // 429를 받으면 30초 동안 가입·로그인 버튼 잠금
   const busyRef = useRef(false);                    // 같은 프레임 안의 두 번 클릭도 막는다
   const [lo, setLo] = useState<{ pending: number; missingImages: number; wipe: boolean } | null>(null);
+  const [backups, setBackups] = useState<BackupRow[]>([]);
   const capEl = useRef<HTMLDivElement>(null);
   const cap = useRef<CaptchaWidget | null>(null);
 
   useEffect(() => sync?.subscribe(() => force(x => x + 1)), [sync]);
+  // 이전 기기 데이터(계정 내용만 불러오기 전에 남긴 백업). 상태가 바뀔 때마다 다시 읽는다 (방금 만든 백업 포함)
+  const loadBackups = () => listLocalBackups().then(
+    l => setBackups(l.map(b => ({ id: b.id, at: b.at, boxes: b.data.cats.filter(alive).reduce((n, c) => n + c.boxes.filter(alive).length, 0) }))),
+    () => setBackups([]),
+  );
+  useEffect(() => { loadBackups(); }, [sync?.status]);
   useEffect(() => { if (initialCode) { setView('code'); setF(x => ({ ...x, code: initialCode })); onCodeUsed?.(); } }, [initialCode, onCodeUsed]);
   const needCaptcha = view === 'enable' || view === 'login' || view === 'code' || view === 'password' || view === 'rekey';
   useEffect(() => {
@@ -246,8 +259,12 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: st === 'OFFLINE' ? '#FF9C8F' : nc, boxShadow: `0 0 8px ${st === 'OFFLINE' ? '#FF9C8F' : nc}` }} />
         <span style={{ color: st === 'OFFLINE' ? '#FF9C8F' : nc, fontFamily: "'GalmuriMono9',monospace", letterSpacing: '.12em' }}>{st}</span>
-        <span style={{ color: dim }}>{st === 'OFFLINE' ? '— 연결되면 자동으로 올립니다' : '보관함 연결됨'}</span>
+        <span style={{ color: dim }}>{st === 'OFFLINE' ? '— 연결되면 자동으로 올립니다' : st === 'WAITING' ? '— 선택 전이라 올리지 않아요' : '보관함 연결됨'}</span>
       </div>
+      {st === 'WAITING' && (<>
+        <P>이 기기에서 만든 내용을 계정에 추가할지, 계정 내용만 불러올지 골라 주세요.</P>
+        {btn('선택하기', () => sync.reopenJoin(), 'fill')}
+      </>)}
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: dim }}>
         이 기기 이름
         <input defaultValue={sync.meta?.deviceName} onBlur={e => { const v = e.target.value.trim(); if (v && v !== sync.meta?.deviceName) run(() => sync.renameDevice(v.slice(0, 40))); }}
@@ -300,13 +317,37 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
     } catch (e) { setErr(friendly(e)); }
   }
 
+  const restore = (b: BackupRow) => run(async () => {
+    const n = await onRestoreBackup!(b.id);
+    await loadBackups();
+    setMsg(n ? `${n}개 상자를 추가했어요` : '더할 내용이 없어요');
+  });
+  const recover = view === 'home' && backups.length > 0 && onRestoreBackup && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: dash, paddingTop: 12 }}>
+      <div style={{ fontSize: 11, color: dim }}>이전 기기 데이터 복구</div>
+      <P>계정 내용만 불러올 때 이 기기에 남긴 백업이에요. 고르면 지금 내용에 추가해요(실행 취소 가능). 30일 뒤 자동으로 지워져요.</P>
+      {backups.map(b => (
+        <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid rgba(217,218,240,.12)', fontSize: 11 }}>
+          <span style={{ flex: 1, minWidth: 0, color: '#E9EAF7' }}>{stamp(b.at)}<span style={{ color: 'rgba(217,218,240,.45)' }}> · 상자 {b.boxes}개</span></span>
+          <span onClick={() => { if (!busy) restore(b); }} style={{ cursor: busy ? 'default' : 'pointer', color: nc, flex: 'none', padding: '2px 4px' }}>추가</span>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <Section title="SYNC / 동기화" nc={nc}>
       {body}
+      {recover}
       <a href={`${import.meta.env.BASE_URL}privacy.html`} target="_blank" rel="noopener" style={{ fontSize: 10, color: 'rgba(217,218,240,.45)', alignSelf: 'flex-start' }}>개인정보처리방침</a>
     </Section>
   );
 }
+
+const stamp = (t: number) => {
+  const d = new Date(t), z = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+};
 
 function ago(iso: string) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

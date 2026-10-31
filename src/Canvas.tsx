@@ -7,9 +7,10 @@ import {
   type Data, type Category, type Box, type Prefs, type PrefsT, type View, type Persisted,
   tick, uid, alive, visibleCats, liveBoxes, liveLinks, liveStrokes, stampChanges, applyTarget, clockValue, clearCategory,
 } from './model';
-import { saveAll, putImage, getImage, requestPersist, resetAll } from './storage';
+import { saveAll, putImage, getImage, requestPersist, resetAll, saveLocalBackup, getLocalBackup, restoreBackupImages } from './storage';
 import { loadSync, parsePair, type SyncService, type SyncStatus } from './sync';
 import { mergeData, mergePrefs, rebaseSnapshot } from './merge';
+import { addToAccount, type JoinPlan, type JoinResult } from './join';
 // 동기화 화면(QR 생성·스캔 포함)은 설정을 열 때 불러온다
 const SyncPanel = React.lazy(() => import('./ui/SyncPanel'));
 const Licenses = React.lazy(() => import('./ui/Licenses'));
@@ -48,6 +49,7 @@ type State = {
   swipe: number; liveStroke: [number, number][] | null; space: boolean; flash: { name: string; idx: number } | null; flashOn: boolean;
   panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
+  joinAsk: JoinPlan | null; joinStep: 'ask' | 'confirm'; joinBusy: boolean; joinErr: string | null; toast: string | null;
 };
 
 const hhmm = () => { const t = new Date(); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
@@ -78,7 +80,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   userMoved = false;
   focusEdit = false;
   focusRename = false;
-  saveT = 0; flashT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0; swipeEndAt = 0;
+  saveT = 0; flashT = 0; toastT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0; swipeEndAt = 0;
   dragTab: string | null = null;
   sizeNoise: (() => void) | null = null;
   off: (() => void)[] = [];
@@ -97,6 +99,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false,
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
       syncStatus: 'off', pairCode: null,
+      joinAsk: null, joinStep: 'ask', joinBusy: false, joinErr: null, toast: null,
     };
   }
 
@@ -157,21 +160,32 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     sync.attach({
       getData: () => this.state.data,
       getPrefs: () => ({ prefs: this.state.prefs, prefsT: this.state.prefsT }),
-      applyRemote: (cats, prefs, replace) => new Promise<void>(res => {
+      applyRemote: (cats, prefs, mode = 'merge') => new Promise<void>(res => {
+        let added: JoinResult | null = null;
         this.setState(s => {
-          const data = replace ? { cats } : mergeData(s.data, cats);
-          // 실행 취소 히스토리에도 원격 변경을 반영해 두어야 실행 취소가 다른 기기의 변경을 지우지 않는다
-          this.hist = replace ? [] : this.hist.map(h => rebaseSnapshot(h, s.data, data));
+          let data: Data, active = s.active;
+          if (mode === 'replace') { data = { cats }; this.hist = []; }
+          else if (mode === 'add') {
+            // 계정에 추가하기: 실행 취소 목표는 "새 항목을 넣기 전의 계정 내용" (이전 히스토리는 서버 내용이 없는 상태라 버린다)
+            const r = addToAccount(s.data, cats); added = r;
+            data = r.data; this.hist = [r.base]; active = r.catMap[s.active] ?? s.active;
+          } else {
+            data = mergeData(s.data, cats);
+            // 실행 취소 히스토리에도 원격 변경을 반영해 두어야 실행 취소가 다른 기기의 변경을 지우지 않는다
+            this.hist = this.hist.map(h => rebaseSnapshot(h, s.data, data));
+          }
           const p = prefs ? mergePrefs({ prefs: s.prefs, prefsT: s.prefsT }, prefs) : null;
-          return { data, ...(p ? { prefs: p.prefs, prefsT: p.prefsT } : {}) } as State;
+          return { data, active, ...(p ? { prefs: p.prefs, prefsT: p.prefsT } : {}) } as State;
         }, () => {
           const cs = this.cats;
           if (cs.length && !cs.some(c => c.id === this.state.active)) this.setState({ active: cs[0].id });
-          if (replace) { this.userMoved = false; setTimeout(() => this.fit(), 0); }
+          if (mode === 'replace') { this.userMoved = false; setTimeout(() => this.fit(), 0); }
+          if (added) this.afterAdd(added);
           this.scheduleSave();
           res();
         });
       }),
+      askJoin: plan => this.setState({ joinAsk: plan, joinStep: 'ask', joinBusy: false, joinErr: null }),
     });
     const check = () => { if (document.visibilityState === 'visible') sync.syncNow(); };
     window.addEventListener('online', check); window.addEventListener('focus', check); document.addEventListener('visibilitychange', check);
@@ -235,6 +249,50 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     this.setData(d => ({ ...d, cats: d.cats.map(c => (c.id === id ? clearCategory(c, what) : c)) }));
     this.setState(s => ({ clearOpen: false, editing: null, connectFrom: null, sel: what === 'all' ? [] : s.sel }));
   }
+  // ── 새로 연결한 기기: 이 기기 내용을 계정에 더하거나, 백업해 두고 계정 내용으로 바꾸기 ──
+  joinAdd() { this.setState({ joinAsk: null }); this.sync?.chooseJoin('add'); }
+  async joinReplace() {
+    if (this.state.joinBusy) return;
+    this.setState({ joinBusy: true, joinErr: null });
+    try { await saveLocalBackup(this.state.data); } catch {
+      this.setState({ joinBusy: false, joinErr: '백업을 만들지 못해서 바꾸지 않았어요. 저장 공간을 확인해 주세요.' });
+      return;
+    }
+    this.setState({ joinAsk: null, joinBusy: false });
+    this.sync?.chooseJoin('replace');
+    this.showToast('이 기기 내용은 백업해 두었어요');
+  }
+  // 추가한 카테고리는 전체 보기로 맞추고 짧게 알린다
+  afterAdd(r: JoinResult) {
+    const a = r.added; if (!(a.cats + a.boxes + a.links + a.strokes)) return;
+    const views = { ...this.state.views };
+    for (const id of r.touched) { const c = this.state.data.cats.find(x => x.id === id); if (c) views[id] = this.fitView(c); }
+    if (r.touched.includes(this.cat.id)) this.userMoved = false;
+    this.setState({ views }, () => this.scheduleSave());
+    this.showToast(a.boxes ? `${a.boxes}개 상자를 추가했어요` : '이 기기 내용을 추가했어요');
+  }
+  showToast(msg: string) {
+    clearTimeout(this.toastT);
+    this.setState({ toast: msg });
+    this.toastT = window.setTimeout(() => this.setState({ toast: null }), 2600);
+  }
+  // 설정 > 동기화 > 이전 기기 데이터 복구: 백업을 지금 데이터에 "계정에 추가하기"와 같은 방식으로 더한다 (실행 취소 가능)
+  restoreBackup = async (id: string): Promise<number> => {
+    const b = await getLocalBackup(id); if (!b) return 0;
+    await restoreBackupImages(b);
+    let r: JoinResult | null = null;
+    await new Promise<void>(res => this.setState(s => {
+      const x = addToAccount(b.data, s.data.cats);
+      if (!(x.added.cats + x.added.boxes + x.added.links + x.added.strokes)) return null;
+      r = x; this.hist.push(s.data); if (this.hist.length > 100) this.hist.shift();
+      return { data: x.data, sel: [], editing: null, connectFrom: null } as unknown as State;
+    }, res));
+    const done = r as JoinResult | null;
+    if (!done) { this.showToast('더할 내용이 없어요'); return 0; }
+    this.afterAdd(done);
+    if (done.touched.length && !done.touched.includes(this.cat.id)) this.switchTo(done.touched[0]);
+    return done.added.boxes;
+  };
   // 로그아웃 "이 기기 데이터도 지우기": 저장을 멈추고 기기 저장소를 초기 예시 데이터로 바꾼 뒤 다시 시작
   wiping = false;
   wipeLocal = async () => {
@@ -273,15 +331,20 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     return { L: 80, T: 60, R: this.state.sel.length ? 250 : 30, B: 70 };
   }
   fit() {
-    const c = this.cat, W = window.innerWidth, H = window.innerHeight; if (!W || !H || !c) return;
+    const c = this.cat; if (!window.innerWidth || !window.innerHeight || !c) return;
+    this.setView(this.fitView(c));
+  }
+  // 카테고리 전체가 보이는 화면 위치 (지금 보고 있지 않은 카테고리도)
+  fitView(c: Category): View {
+    const W = window.innerWidth, H = window.innerHeight;
     const xs: number[] = [], ys: number[] = [];
     liveBoxes(c).forEach(b => { xs.push(b.x, b.x + b.w); ys.push(b.y, b.y + b.h); });
     liveStrokes(c).forEach(s => s.pts.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
     const { L, T, R, B: Bm } = this.fitMargins(), aw = W - L - R, ah = H - T - Bm;
-    if (!xs.length) return this.setView({ x: L + aw / 2, y: T + ah / 2, z: 1 });
+    if (!xs.length) return { x: L + aw / 2, y: T + ah / 2, z: 1 };
     const minX = Math.min(...xs) - 40, maxX = Math.max(...xs) + 40, minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 40;
     const ze = Math.max(0.2 * K, Math.min(1.2 * K, aw / (maxX - minX), ah / (maxY - minY)));
-    this.setView({ z: ze / K, x: L + aw / 2 - ((minX + maxX) / 2) * ze, y: T + ah / 2 - ((minY + maxY) / 2) * ze });
+    return { z: ze / K, x: L + aw / 2 - ((minX + maxX) / 2) * ze, y: T + ah / 2 - ((minY + maxY) / 2) * ze };
   }
   zoomAt(cx: number, cy: number, z2: number) {
     this.userMoved = true;
@@ -637,7 +700,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
     if (e.key === 'Escape' && (this.drag?.type === 'swipe' || this.wAcc)) { this.drag = null; this.wAcc = 0; this.setState({ swipe: 0 }); return; }
     if (e.key === '[' || e.key === ']') { e.preventDefault(); this.go(e.key === ']' ? 1 : -1); return; }
-    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false, clearOpen: false }); return; }
+    if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false, clearOpen: false, joinAsk: null }); return; }
     if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
     const map: Record<string, Tool> = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
     const k = e.key.toLowerCase();
@@ -904,7 +967,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           <div onClick={() => this.setPref({ pulse: !P.pulse })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
             <span>신호 펄스 (뉴런 발화)</span>{toggle(P.pulse)}
           </div>
-          <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} /></React.Suspense>
+          <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} onRestoreBackup={this.restoreBackup} /></React.Suspense>
           <div onClick={() => this.setState({ licensesOpen: true })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: dash, paddingTop: 14, minHeight: 30, fontSize: 11, color: 'rgba(217,218,240,.6)', cursor: 'pointer' }}>
             <span>오픈소스 라이선스</span><span style={{ color: nc }}>›</span>
           </div>
@@ -1004,7 +1067,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const helpGroups = touch ? HELP_TOUCH : HELP_DESKTOP;
     const topBtn: React.CSSProperties = { whiteSpace: 'nowrap', flex: 'none', fontFamily: "'GalmuriMono11',monospace", fontSize: 11, letterSpacing: '.08em', padding: '7px 11px', background: 'transparent', color: '#D9DAF0', border: '1px solid rgba(217,218,240,.25)', cursor: 'pointer' };
     const saveColor = s.saveErr ? '#FF9C8F' : ec;
-    const syncColor = s.syncStatus === 'OFFLINE' || s.syncStatus === 'REVOKED' ? '#FF9C8F' : s.syncStatus === 'SYNCING…' ? 'rgba(217,218,240,.6)' : nc;
+    const syncColor = s.syncStatus === 'OFFLINE' || s.syncStatus === 'REVOKED' ? '#FF9C8F' : s.syncStatus === 'SYNCING…' || s.syncStatus === 'WAITING' ? 'rgba(217,218,240,.6)' : nc;
 
     return (
       <div className={'root' + (s.wco ? ' wco' : '')} style={{ position: 'fixed', inset: 0, background: '#050509', overflow: 'hidden', cursor, userSelect: 'none', WebkitUserSelect: 'none', fontFamily: "'GalmuriMono11','Galmuri11',monospace", color: '#D9DAF0', touchAction: 'none' }}
@@ -1183,6 +1246,61 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             </div>
           );
         })()}
+
+        {s.joinAsk && (() => {
+          const j = s.joinAsk, m = j.mine, close = () => this.setState({ joinAsk: null });
+          const jbtn = (label: string, onClick: () => void, kind: 'fill' | 'line' | 'ghost', auto = false) => (
+            <button autoFocus={auto} disabled={s.joinBusy} onClick={onClick} style={{ flex: 1, minWidth: 0, height: touch ? 44 : 34, padding: '0 8px', cursor: s.joinBusy ? 'default' : 'pointer', opacity: s.joinBusy ? 0.5 : 1, fontFamily: "'GalmuriMono11',monospace", fontSize: 12,
+              background: kind === 'fill' ? nc : 'transparent', color: kind === 'fill' ? '#05060B' : kind === 'line' ? nc : 'rgba(217,218,240,.7)', border: kind === 'fill' ? 'none' : kind === 'line' ? `1px solid ${accentLine}` : '1px solid rgba(217,218,240,.2)' }}>{label}</button>
+          );
+          const grid = (cells: [string, number][]) => (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cells.length},1fr)`, gap: 1, background: 'rgba(217,218,240,.1)', border: '1px solid rgba(217,218,240,.1)' }}>
+              {cells.map(([k, n]) => (
+                <div key={k} style={{ background: '#07080E', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 10, color: 'rgba(217,218,240,.55)' }}>{k}</span>
+                  <span style={{ fontFamily: "'GalmuriMono11',monospace", fontSize: 16, color: n ? '#EDEEFA' : 'rgba(217,218,240,.35)' }}>{n}</span>
+                </div>
+              ))}
+            </div>
+          );
+          const label = (t: string) => <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t}</div>;
+          return (
+            <div data-ui="1" onPointerDown={e => { e.stopPropagation(); if (!s.joinBusy) close(); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 43 }}>
+              <div role="dialog" aria-label="이 기기에서 만든 내용이 있어요" onPointerDown={stop} style={{ zoom: K, width: 'min(420px,100%)', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc }}>
+                  <span>이 기기에서 만든 내용이 있어요</span>
+                  <span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => { if (!s.joinBusy) close(); }}>✕</span>
+                </div>
+                <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {s.joinStep === 'ask' ? (<>
+                    {label('이 기기에만 있는 것')}
+                    {grid([['카테고리', m.cats], ['상자', m.boxes], ['연결선', m.links], ['펜 획', m.strokes]])}
+                    {m.newer > 0 && <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>이 기기에서 더 최근에 고친 항목 {m.newer}개</div>}
+                    {label('계정에 있는 것')}
+                    {grid([['카테고리', j.account.cats], ['상자', j.account.boxes]])}
+                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>고르기 전까지는 이 기기 내용을 서버에 올리지 않아요. 창을 닫으면 다음에 앱을 열 때 다시 물어요.</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {jbtn('계정에 추가하기 (기본)', () => this.joinAdd(), 'fill', true)}
+                      {jbtn('계정 내용만 불러오기', () => this.setState({ joinStep: 'confirm', joinErr: null }), 'line')}
+                    </div>
+                  </>) : (<>
+                    <div style={{ fontSize: 13, color: '#EDEEFA', lineHeight: 1.6 }}>이 기기에서 만든 내용은 백업해두고 계정 내용으로 바꿔요</div>
+                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>백업은 이 기기에만 저장되고(사진 포함, 최근 3개) 30일 뒤 자동으로 지워져요. 설정 › 동기화 › 이전 기기 데이터 복구에서 계정에 다시 더할 수 있어요.</div>
+                    {s.joinErr && <div style={{ fontSize: 11, color: '#FF9C8F' }}>{s.joinErr}</div>}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {jbtn(s.joinBusy ? '백업하는 중…' : '백업하고 바꾸기', () => this.joinReplace(), 'fill', true)}
+                      {jbtn('뒤로', () => this.setState({ joinStep: 'ask', joinErr: null }), 'ghost')}
+                    </div>
+                  </>)}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {s.toast && (
+          <div role="status" style={{ position: 'absolute', left: '50%', bottom: mobile ? 150 : 90, transform: 'translateX(-50%)', zIndex: 44, pointerEvents: 'none', padding: '8px 14px', background: 'rgba(6,7,13,.95)', border: `1px solid ${accentLine}`, color: '#EDEEFA', fontFamily: "'GalmuriMono11',monospace", fontSize: 12, whiteSpace: 'nowrap', boxShadow: `0 0 24px ${glowSoft}` }}>{s.toast}</div>
+        )}
 
         {s.licensesOpen && (
           <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ licensesOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 41 }}>

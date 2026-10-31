@@ -1,14 +1,15 @@
 // 기기 안 저장소. IndexedDB 관련 코드는 전부 이 파일에만 둔다.
-// 나머지 코드는 loadAll / saveAll / putImage / getImage / deleteImage / resetAll / requestPersist만 사용한다.
+// 나머지 코드는 loadAll / saveAll / putImage / getImage / deleteImage / resetAll / requestPersist와 기기 백업 함수만 사용한다.
 import {
-  type Persisted, DEF_PREFS, PREF_KEYS, zeroPrefsT, seed, normalizeData, purgeTombstones,
+  type Persisted, type Data, DEF_PREFS, PREF_KEYS, zeroPrefsT, seed, normalizeData, purgeTombstones,
   referencedImages, maxStamp, observeClock, clockValue, visibleCats, uid,
 } from './model';
 
 const DB_NAME = 'synapse-canvas';
-const DB_VERSION = 1;
+const DB_VERSION = 2;   // 2: 기기 백업(backups) 저장소 추가
 const KV = 'kv';
 const IMAGES = 'images';
+const BACKUPS = 'backups';
 const STATE_KEY = 'state';
 const LEGACY_KEY = 'synapse-canvas-v1';
 
@@ -21,6 +22,7 @@ function db(): Promise<IDBDatabase> {
         const d = req.result;
         if (!d.objectStoreNames.contains(KV)) d.createObjectStore(KV);
         if (!d.objectStoreNames.contains(IMAGES)) d.createObjectStore(IMAGES);
+        if (!d.objectStoreNames.contains(BACKUPS)) d.createObjectStore(BACKUPS);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -51,6 +53,40 @@ export async function dataUrlToBlob(src: string): Promise<Blob> {
 // dataURL을 이미지 저장소에 넣고 새 imageId를 돌려준다 (이전 버전 데이터/백업 가져오기용)
 export async function storeDataUrl(src: string, id = uid()): Promise<string | null> {
   try { await putImage(id, await dataUrlToBlob(src)); return id; } catch { return null; }
+}
+
+// ── 기기 백업 ─────────────────────────────────────────
+// "계정 내용만 불러오기"로 이 기기 데이터를 버리기 전에 남겨 두는 사본. 서버에는 올리지 않는다.
+// 사진은 Blob을 백업 안에 같이 넣는다(시작 시 정리가 참조 없는 사진을 지워도 백업은 남게). 최근 3개, 30일까지.
+export type LocalBackup = { id: string; at: number; data: Data; images: Record<string, Blob> };
+export const BACKUP_KEEP = 3;
+export const BACKUP_TTL = 30 * 24 * 3600 * 1000;
+
+// 지울 백업 id: 30일 지난 것 + 최근 BACKUP_KEEP개를 넘는 것
+export function expiredBackups(list: { id: string; at: number }[], now = Date.now()): string[] {
+  const sorted = [...list].sort((a, b) => b.at - a.at);
+  return sorted.filter((b, i) => i >= BACKUP_KEEP || now - b.at > BACKUP_TTL).map(b => b.id);
+}
+async function pruneBackups(now: number) {
+  const all = await tx<LocalBackup[]>(BACKUPS, 'readonly', s => s.getAll());
+  const drop = expiredBackups(all, now);
+  if (drop.length) await tx(BACKUPS, 'readwrite', s => { for (const id of drop) s.delete(id); });
+  return all.filter(b => !drop.includes(b.id)).sort((a, b) => b.at - a.at);
+}
+export async function saveLocalBackup(data: Data, now = Date.now()): Promise<LocalBackup> {
+  const images: Record<string, Blob> = {};
+  for (const id of referencedImages(data, true)) { const b = await getImage(id); if (b) images[id] = b; }
+  const b: LocalBackup = { id: uid(), at: now, data, images };
+  await tx(BACKUPS, 'readwrite', s => { s.put(b, b.id); });
+  await pruneBackups(now);
+  return b;
+}
+// 최근 것부터. 읽을 때 30일 지난 것은 지운다.
+export const listLocalBackups = (now = Date.now()) => pruneBackups(now);
+export const getLocalBackup = (id: string) => tx<LocalBackup | undefined>(BACKUPS, 'readonly', s => s.get(id));
+// 백업의 사진을 이미지 저장소로 되돌린다 (이미 있으면 그대로)
+export async function restoreBackupImages(b: LocalBackup) {
+  for (const [id, blob] of Object.entries(b.images)) if (!(await getImage(id))) await putImage(id, blob);
 }
 
 // ── 상태 ─────────────────────────────────────────────
@@ -104,13 +140,15 @@ export async function loadAll(): Promise<{ state: Persisted; fresh: boolean }> {
     const used = referencedImages(state.data);
     for (const id of await listImageIds()) if (!used.has(id)) await deleteImage(id);
   } catch { /* 정리는 실패해도 무방 */ }
+  try { await pruneBackups(Date.now()); } catch { /* 정리는 실패해도 무방 */ }
   return { state, fresh };
 }
 
-// 이 기기의 맵·사진을 모두 지우고 초기 예시 데이터로 (로그아웃의 "이 기기 데이터도 지우기").
+// 이 기기의 맵·사진·기기 백업을 모두 지우고 초기 예시 데이터로 (로그아웃의 "이 기기 데이터도 지우기").
 // 비워 두기만 하면 다음 시작 때 이전 버전(localStorage) 데이터를 다시 옮겨 오므로 초기 데이터를 바로 써 둔다.
 export async function resetAll(): Promise<void> {
   await tx(IMAGES, 'readwrite', s => { s.clear(); });
+  await tx(BACKUPS, 'readwrite', s => { s.clear(); });
   await saveAll(finish({ schema: 2, data: seed(), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 }));
 }
 
