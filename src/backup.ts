@@ -21,8 +21,9 @@ export async function exportBackup(data: Data, prefs: Prefs, preferShare: boolea
     const b = (await getImage(id)) || (await fetchRemoteImage(id).catch(() => null));
     if (b) images[id] = await blobToDataUrl(b);
   }
+  // app 값은 예전 이름 그대로 둔다 (이전 버전 앱도 이 파일을 IMPORT할 수 있게)
   const json = JSON.stringify({ app: 'synapse-canvas', version: 2, exportedAt: new Date().toISOString(), data: clean, prefs, images }, null, 1);
-  const name = `synapse-backup-${stamp()}.json`;
+  const name = `dendra-backup-${stamp()}.json`;
   const file = new File([json], name, { type: 'application/json' });
   // 모바일은 공유 시트 우선 (파일 앱 저장, 메신저 전송 등), 안 되면 다운로드
   if (preferShare && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -37,8 +38,11 @@ export async function exportBackup(data: Data, prefs: Prefs, preferShare: boolea
 
 // 검증 실패 시 예외. version 1(사진 = src dataURL)과 version 2(사진 = images 맵) 모두 지원.
 export type RawBackup = any;
+// 예전 이름(synapse-canvas)과 새 이름(dendra)의 백업을 모두 받는다
+const BACKUP_APPS = ['synapse-canvas', 'dendra'];
 export function validateBackup(text: string): RawBackup {
   const o = JSON.parse(text);
+  if (o && o.app != null && !BACKUP_APPS.includes(o.app)) throw new Error('bad');
   if (!o || !o.data || !Array.isArray(o.data.cats) || !o.data.cats.length) throw new Error('bad');
   return o;
 }

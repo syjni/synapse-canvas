@@ -14,9 +14,10 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['apple-touch-icon.png', 'favicon.svg'],
       manifest: {
+        // id는 바꾸지 않는다: 바꾸면 이미 설치된 앱이 다른 앱으로 취급된다
         id: 'synapse-canvas',
-        name: 'Synapse Canvas',
-        short_name: 'Synapse',
+        name: 'Dendra: Mind Map Canvas',
+        short_name: 'Dendra',
         description: '상자를 뉴런처럼 이어 생각을 정리하는 무한 캔버스',
         lang: 'ko',
         start_url: '.',

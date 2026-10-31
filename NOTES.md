@@ -1,4 +1,4 @@
-# Synapse Canvas — 구현 노트
+# Dendra (구 Synapse Canvas) — 구현 노트
 
 기준: `design_handoff/README.md`(명세)와 `design_handoff/Synapse Canvas.dc.html`(최종안).
 README와 dc.html이 다를 때는 **dc.html을 따랐습니다.**

@@ -978,7 +978,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {/* 상단 바 — Windows 앱(window-controls-overlay)에서는 타이틀바 자리까지 이어진다 */}
         <div data-ui="1" className="topbar" onPointerDown={stop} onDoubleClick={stop} style={{ zoom: K, position: 'absolute', display: 'flex', alignItems: 'center', gap: mobile ? 10 : 18, background: 'transparent' }}>
           <div className="drag" style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11, letterSpacing: '.18em', color: nc, flex: 'none', alignSelf: 'stretch' }}>
-            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && 'SYNAPSE'}
+            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>DENDRA<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>생각을 잇는 마인드맵</span></>}
           </div>
           <div data-tabs="1" className="nodrag" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', touchAction: 'pan-x' }}>
             {cs.map((t, i) => {
