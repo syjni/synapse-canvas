@@ -19,6 +19,7 @@ import { BoxImage } from './ui/BoxImage';
 import { helpGroups } from './ui/help';
 import { t, dual, fmtTime, getLang, setLang, subscribeLang, LANGS, LANG_NAMES } from './i18n';
 import { mouseAction, panDoubleClickable, DoubleClick, type Tool } from './lib/input';
+import { clampZ, zoomView, wheelPixels, wheelZoomFactor, isWheelNotch, approachZoom, BUTTON_STEP } from './lib/zoom';
 
 // ── 디자인 상수 (dc.html) ─────────────────────────────
 const K = 0.85;              // 전역 85% 스케일
@@ -85,6 +86,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   focusEdit = false;
   focusRename = false;
   saveT = 0; flashT = 0; toastT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0; swipeEndAt = 0;
+  // 휠·버튼 확대 애니메이션: 목표 배율과 기준점(커서). 실제 배율은 매 프레임 목표를 따라간다
+  zAnim: { cat: string; z: number; target: number; cx: number; cy: number; raf: number; t: number } | null = null;
   dragTab: string | null = null;
   sizeNoise: (() => void) | null = null;
   off: (() => void)[] = [];
@@ -198,7 +201,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     this.off.push(() => { window.removeEventListener('online', check); window.removeEventListener('focus', check); document.removeEventListener('visibilitychange', check); });
     const poll = window.setInterval(check, 60000); this.off.push(() => clearInterval(poll));
   }
-  componentWillUnmount() { this.off.forEach(f => f()); clearInterval(this.noiseTimer); this.flushSave(); }
+  componentWillUnmount() { this.off.forEach(f => f()); clearInterval(this.noiseTimer); this.stopZoomAnim(); this.flushSave(); }
   componentDidUpdate() {
     const ta = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]');
     if (ta && this.focusEdit) { this.focusEdit = false; ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -343,6 +346,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   }
   fit() {
     const c = this.cat; if (!window.innerWidth || !window.innerHeight || !c) return;
+    this.stopZoomAnim();
     this.setView(this.fitView(c));
   }
   // 카테고리 전체가 보이는 화면 위치 (지금 보고 있지 않은 카테고리도)
@@ -360,11 +364,31 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   // z2: 새 배율, 또는 지금 배율을 받아 새 배율을 돌려주는 함수(휠 — 연속 이벤트가 누적되도록)
   zoomAt(cx: number, cy: number, z2: number | ((z: number) => number)) {
     this.userMoved = true;
-    this.setView(v => {
-      const z = Math.max(0.2, Math.min(3, typeof z2 === 'function' ? z2(v.z) : z2)), k = z / v.z;
-      return { z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
-    });
+    this.setView(v => zoomView(v, cx, cy, typeof z2 === 'function' ? z2(v.z) : z2));
   }
+  // 목표 배율을 factor배로 바꾸고 실제 배율은 약 120ms 동안 따라가게 (휠 한 칸·+/− 버튼).
+  // 빠르게 여러 번 굴리면 목표가 쌓여 한 움직임으로 이어진다
+  zoomSmooth(cx: number, cy: number, factor: number) {
+    this.userMoved = true;
+    const a = this.zAnim && this.zAnim.cat === this.cat.id ? this.zAnim : null;
+    const target = clampZ((a ? a.target : this.view().z) * factor);
+    if (a) { Object.assign(a, { target, cx, cy }); return; }
+    this.stopZoomAnim();
+    const anim = { cat: this.cat.id, z: this.view().z, target, cx, cy, raf: 0, t: performance.now() };
+    const tick = (now: number) => {
+      if (this.zAnim !== anim) return;
+      if (this.cat.id !== anim.cat) { this.zAnim = null; return; }
+      const dt = Math.min(50, now - anim.t); anim.t = now;
+      // 배율은 애니메이션이 직접 들고 간다 (setState 반영이 다음 프레임보다 늦을 수 있어서)
+      const z = anim.z = approachZoom(anim.z, anim.target, dt);
+      this.setView(v => zoomView(v, anim.cx, anim.cy, z));
+      if (z === anim.target) { this.zAnim = null; return; }
+      anim.raf = requestAnimationFrame(tick);
+    };
+    this.zAnim = anim;
+    anim.raf = requestAnimationFrame(tick);
+  }
+  stopZoomAnim() { if (this.zAnim) cancelAnimationFrame(this.zAnim.raf); this.zAnim = null; }
   go(step: number) {
     const cs = this.cats, i = cs.findIndex(c => c.id === this.cat.id), n = cs.length;
     this.switchTo(cs[(i + step + n) % n].id);
@@ -537,6 +561,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   // 두 손가락 중심 기준 확대 + 중심 이동에 따른 팬
   doPinch() {
     const p = this.pinch; if (!p) return;
+    this.stopZoomAnim();
     const [a, b] = [...this.touches.values()];
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const z = Math.max(0.2, Math.min(3, p.z0 * Math.hypot(a.x - b.x, a.y - b.y) / p.d0)), ze = z * K;
@@ -698,9 +723,15 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (sc && sc.scrollHeight > sc.clientHeight + 1 && !e.ctrlKey && !e.metaKey && !this.state.space) return;
     e.preventDefault();
     // 줄·페이지 단위(일부 마우스·Firefox)는 픽셀로 환산
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
-    let ddx = e.deltaX * unit, ddy = e.deltaY * unit;
-    if (e.ctrlKey || e.metaKey) { this.zoomAt(e.clientX, e.clientY, z => z * Math.exp(-ddy * 0.01)); return; }
+    const H = window.innerHeight;
+    let ddx = wheelPixels(e.deltaX, e.deltaMode, H), ddy = wheelPixels(e.deltaY, e.deltaMode, H);
+    // Ctrl/⌘: 마우스 휠 한 칸은 목표 배율만 바꾸고 부드럽게 따라가고, 트랙패드 오므리기는 바로 비례해서
+    if (e.ctrlKey || e.metaKey) {
+      const f = wheelZoomFactor(ddy);
+      if (isWheelNotch(ddy, e.deltaMode)) this.zoomSmooth(e.clientX, e.clientY, f);
+      else { this.stopZoomAnim(); this.zoomAt(e.clientX, e.clientY, z => z * f); }
+      return;
+    }
     // Shift + 세로 휠 = 가로 이동 (브라우저가 이미 가로로 바꿔 준 경우는 그대로)
     if (e.shiftKey && !ddx) { ddx = ddy; ddy = 0; }
     if (this.state.space) {
@@ -1210,9 +1241,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             <button className="hv-ghost" onClick={() => this.go(-1)} style={navBtn}>{mobile ? '‹' : '‹ PREV'}</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: mobile ? '0 10px' : '0 16px', minWidth: mobile ? 96 : 130, justifyContent: 'center', borderRight: '1px solid rgba(217,218,240,.12)' }}><span style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 9, color: nc }}>{String(idx + 1).padStart(2, '0') + '/' + String(n).padStart(2, '0')}</span><span style={{ color: '#EDEEFA', maxWidth: mobile ? 90 : 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span></div>
             <button className="hv-ghost" onClick={() => this.go(1)} style={navBtn}>{mobile ? '›' : 'NEXT ›'}</button>
-            <button className="hv-ghost" title={t('nav.zoomOut')} onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z / 1.2)} style={{ ...navBtn, width: 38, padding: 0, borderRight: 'none', fontSize: 15 }}>−</button>
+            <button className="hv-ghost" title={t('nav.zoomOut')} onClick={() => this.zoomSmooth(window.innerWidth / 2, window.innerHeight / 2, 1 / BUTTON_STEP)} style={{ ...navBtn, width: 38, padding: 0, borderRight: 'none', fontSize: 15 }}>−</button>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 52, fontFamily: "'GalmuriMono9',monospace", fontSize: 10, color: nc }}>{Math.round(v.z * 100)}%</div>
-            <button className="hv-ghost" title={t('nav.zoomIn')} onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z * 1.2)} style={{ ...navBtn, width: 38, padding: 0, fontSize: 15 }}>+</button>
+            <button className="hv-ghost" title={t('nav.zoomIn')} onClick={() => this.zoomSmooth(window.innerWidth / 2, window.innerHeight / 2, BUTTON_STEP)} style={{ ...navBtn, width: 38, padding: 0, fontSize: 15 }}>+</button>
             <button className="hv-ghost" title={t('nav.fit')} onClick={() => this.fit()} style={navBtn}>{compact ? '⛶' : '⛶ ' + t('nav.fit')}</button>
             <button title={t('nav.help')} onClick={() => this.setState({ helpOpen: !s.helpOpen })} style={{ ...navBtn, borderRight: 'none', background: s.helpOpen ? nc : 'transparent', color: s.helpOpen ? '#05060B' : '#D9DAF0' }}>{compact ? '?' : '? ' + t('nav.help')}</button>
           </div>
