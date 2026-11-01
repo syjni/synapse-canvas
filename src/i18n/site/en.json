@@ -1,0 +1,41 @@
+{
+  "title": "PixieMap — A Free, Cozy Lo-fi Mind Map",
+  "description": "A free mind map where you place thoughts in boxes on a dark canvas and connect them like neurons. Pixel fonts and soft grain give it a calm lo-fi feel. No sign-up needed — just start.",
+  "shareDescription": "A cozy, free mind map: place thoughts in boxes and connect them like neurons. No sign-up, just start.",
+  "ogImageAlt": "PixieMap screen: pixel-font text boxes on a dark canvas, connected by curved lines",
+  "ldDescription": "A free lo-fi mind map where you place thoughts in boxes on a dark canvas and connect them like neurons. Use it right away without signing up; maps are saved on your device and can sync across devices if you want.",
+  "tagline": "a lo-fi map of linked ideas",
+  "start": "Start",
+  "scrollLabel": "Scroll down to learn more",
+  "aboutHeading": "About PixieMap",
+  "lead": "PixieMap is a free mind map where you place your thoughts in boxes on a dark canvas and connect them like neurons.",
+  "about": "Drop boxes as ideas come and link them up, and scattered thoughts become a single map. Keep separate categories for each topic — feelings, ideas, plans.",
+  "shotAlt": "PixieMap canvas: on a dark background, pixel-font text boxes such as “Today's mood”, “Grateful for” and “Worries” branch out from a central box along neuron-like curves, with Mind, Ideas and Schedule category tabs at the top and a toolbar on the left",
+  "goodHeading": "Why you might like it",
+  "good": [
+    "Open it and start right away — no sign-up, no login.",
+    "By default, your maps are stored only on the device you're using.",
+    "If you want, one username keeps your maps the same across devices.",
+    "Install it like an app on your PC, iPad or phone, and open it offline.",
+    "Galmuri pixel fonts and soft grain give it a lo-fi mood."
+  ],
+  "faqHeading": "FAQ",
+  "faq": [
+    ["Is PixieMap free?", "Yes, every feature is free to use. There are no payments or subscriptions."],
+    ["Do I need an account?", "No. You can use it as soon as you open it. You only create a username if you want the same maps on several devices."],
+    ["Where are my maps saved?", "By default, only in your browser's storage on this device — nothing is sent to a server. If you turn on sync, they're also saved to your vault (the server). See the <a href=\"privacy\">privacy policy</a> for details."],
+    ["Does it work on phones and iPads?", "Yes. Open it in your browser and add it to your Home Screen to use it like an app. Move around with one finger, zoom with two, and draw straight away with an Apple Pencil. You can also install it as an app on a Windows PC."],
+    ["Can I use it offline?", "Yes. Once you've opened it, you can open and edit it without internet. If sync is on, everything catches up automatically when you're back online."]
+  ],
+  "privacy": "Privacy policy",
+  "licenses": "Open-source licenses",
+  "languages": "Language",
+  "licensesPage": {
+    "title": "Open-source licenses — PixieMap",
+    "description": "Copyright notices and full license texts for the Galmuri and Fusion Pixel fonts and open-source libraries used in PixieMap, a free lo-fi mind map.",
+    "heading": "Open-source licenses",
+    "intro": "PixieMap uses the fonts and open-source software below. Many thanks to every author.",
+    "fullText": "Full license text",
+    "home": "About PixieMap"
+  }
+}

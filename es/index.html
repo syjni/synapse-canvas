@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PixieMap — Mapa mental lo-fi, gratis y con encanto</title>
+    <meta name="description" content="Un mapa mental gratis para poner tus ideas en cajas sobre un lienzo oscuro y unirlas como neuronas. Las fuentes de píxeles y un grano suave le dan un ambiente lo-fi. Sin registro: empieza ya." />
+    <link rel="canonical" href="https://pixiemap.pages.dev/es/" />
+    <link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/" />
+    <link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/" />
+    <link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/" />
+    <link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/" />
+    <link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/" />
+    <link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/" />
+    <meta name="theme-color" content="#050509" />
+    <meta name="apple-mobile-web-app-title" content="PixieMap" />
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PixieMap" />
+    <meta property="og:title" content="PixieMap — Mapa mental lo-fi, gratis y con encanto" />
+    <meta property="og:description" content="Un mapa mental bonito y gratis: pon tus ideas en cajas y únelas como neuronas. Sin registro, empieza ya." />
+    <meta property="og:url" content="https://pixiemap.pages.dev/es/" />
+    <meta property="og:image" content="https://pixiemap.pages.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Pantalla de PixieMap: cajas de texto con fuente de píxeles sobre un lienzo oscuro, unidas por líneas curvas" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:locale:alternate" content="ko_KR" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:locale:alternate" content="ja_JP" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PixieMap — Mapa mental lo-fi, gratis y con encanto" />
+    <meta name="twitter:description" content="Un mapa mental bonito y gratis: pon tus ideas en cajas y únelas como neuronas. Sin registro, empieza ya." />
+    <meta name="twitter:image" content="https://pixiemap.pages.dev/og.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "PixieMap",
+          "url": "https://pixiemap.pages.dev/es/",
+          "image": "https://pixiemap.pages.dev/og.png",
+          "applicationCategory": "ProductivityApplication",
+          "operatingSystem": "Web, Windows, iOS, Android",
+          "inLanguage": "es",
+          "description": "Un mapa mental lo-fi y gratis para poner tus ideas en cajas sobre un lienzo oscuro y unirlas como neuronas. Se usa al instante, sin registro; los mapas se guardan en tu dispositivo y, si quieres, se sincronizan entre dispositivos.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "inLanguage": "es",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "¿PixieMap es gratis?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Sí, todas las funciones son gratis. No hay pagos ni suscripciones."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "¿Necesito una cuenta?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Puedes usarla en cuanto la abres. Solo creas un usuario si quieres los mismos mapas en varios dispositivos."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "¿Dónde se guardan mis mapas?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Por defecto, solo en el almacenamiento del navegador de este dispositivo; no se envía nada a ningún servidor. Si activas la sincronización, también se guardan en tu bóveda (el servidor). Encontrarás los detalles en la política de privacidad."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "¿Funciona en teléfonos y iPad?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Sí. Ábrela en el navegador y añádela a la pantalla de inicio para usarla como una app. Mueve la vista con un dedo, haz zoom con dos y dibuja directamente con el Apple Pencil. También puedes instalarla como app en Windows."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "¿Puedo usarla sin internet?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Sí. Después de abrirla una vez, puedes abrirla y editar sin conexión. Si tienes la sincronización activa, todo se pone al día al volver la conexión."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <script>document.documentElement.className += ' js';</script>
+    <link rel="stylesheet" href="/src/landing/landing.css" />
+  </head>
+  <body>
+    <canvas id="dust" aria-hidden="true"></canvas>
+    <div class="haze" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="hero">
+      <h1 class="logo"><i></i>PIXIEMAP</h1>
+      <p class="tag">mapa lo-fi de ideas unidas</p>
+      <a class="btn" href="../app">Empezar</a>
+      <a class="scroll" href="#about" aria-label="Desplázate para saber más">scroll ↓</a>
+    </header>
+
+    <main>
+      <section id="about" class="rise">
+        <h2 class="sr">Qué es PixieMap</h2>
+        <p class="lead">PixieMap es un mapa mental gratis: pones tus ideas en cajas sobre un lienzo oscuro y las unes como neuronas.</p>
+        <p>Coloca cajas a medida que surgen las ideas, únelas con líneas y lo disperso se convierte en un solo mapa. Puedes separar los temas en categorías: emociones, ideas, planes.</p>
+      </section>
+
+      <figure class="shot rise">
+        <img src="../screen.webp" width="1440" height="900" loading="lazy" decoding="async"
+          alt="Lienzo de PixieMap: sobre un fondo oscuro, cajas de texto con fuente de píxeles como «Cómo me siento hoy», «Agradezco» y «Preocupaciones» salen de una caja central por curvas como neuronas; arriba están las pestañas de categoría Mind, Ideas y Schedule, y a la izquierda la barra de herramientas" />
+      </figure>
+
+      <section class="rise">
+        <h2>Por qué te puede gustar</h2>
+        <p>Ábrela y empieza: sin registro ni inicio de sesión.</p>
+        <p>Por defecto, tus mapas se guardan solo en el dispositivo que usas.</p>
+        <p>Si quieres, un solo usuario mantiene tus mapas iguales en varios dispositivos.</p>
+        <p>Instálala como una app en tu PC, iPad o teléfono, y ábrela sin conexión.</p>
+        <p>Las fuentes de píxeles Galmuri y un grano suave le dan un aire lo-fi.</p>
+      </section>
+
+      <section class="rise faq">
+        <h2>Preguntas frecuentes</h2>
+        <details>
+          <summary>¿PixieMap es gratis?</summary>
+          <p>Sí, todas las funciones son gratis. No hay pagos ni suscripciones.</p>
+        </details>
+        <details>
+          <summary>¿Necesito una cuenta?</summary>
+          <p>No. Puedes usarla en cuanto la abres. Solo creas un usuario si quieres los mismos mapas en varios dispositivos.</p>
+        </details>
+        <details>
+          <summary>¿Dónde se guardan mis mapas?</summary>
+          <p>Por defecto, solo en el almacenamiento del navegador de este dispositivo; no se envía nada a ningún servidor. Si activas la sincronización, también se guardan en tu bóveda (el servidor). Encontrarás los detalles en la <a href="privacy">política de privacidad</a>.</p>
+        </details>
+        <details>
+          <summary>¿Funciona en teléfonos y iPad?</summary>
+          <p>Sí. Ábrela en el navegador y añádela a la pantalla de inicio para usarla como una app. Mueve la vista con un dedo, haz zoom con dos y dibuja directamente con el Apple Pencil. También puedes instalarla como app en Windows.</p>
+        </details>
+        <details>
+          <summary>¿Puedo usarla sin internet?</summary>
+          <p>Sí. Después de abrirla una vez, puedes abrirla y editar sin conexión. Si tienes la sincronización activa, todo se pone al día al volver la conexión.</p>
+        </details>
+      </section>
+
+      <section class="rise end">
+        <a class="btn" href="../app">Empezar</a>
+      </section>
+    </main>
+
+    <footer>
+      <div class="links">
+        <a href="privacy">Política de privacidad</a>
+        <a href="licenses">Licencias de código abierto</a>
+      </div>
+      <nav class="langs" aria-label="Idioma">
+        <a href="../" hreflang="ko" lang="ko" data-lang="ko">한국어</a>
+        <a href="../en/" hreflang="en" lang="en" data-lang="en">English</a>
+        <a href="../ja/" hreflang="ja" lang="ja" data-lang="ja">日本語</a>
+        <a href="../zh-hans/" hreflang="zh-Hans" lang="zh-Hans" data-lang="zh-Hans">简体中文</a>
+        <a href="../es/" hreflang="es" lang="es" data-lang="es" aria-current="page">Español</a>
+      </nav>
+    </footer>
+
+    <script type="module" src="/src/landing/landing.ts"></script>
+  </body>
+</html>

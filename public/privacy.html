@@ -6,6 +6,12 @@
 <title>개인정보처리방침 — PixieMap</title>
 <meta name="description" content="무료 로파이 마인드맵 PixieMap이 어떤 정보를 기기와 서버에 저장하는지, 국외 이전과 보관 기간, 삭제 방법을 안내합니다.">
 <link rel="canonical" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/privacy">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#050509">
 <style>
@@ -24,6 +30,9 @@
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
   th { color: var(--dim); font-weight: 500; width: 34%; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -88,7 +97,14 @@
   <h2>7. 문의</h2>
   <p>개인정보 관련 문의: <span id="contact">운영자 연락처를 여기에 적어 주세요</span></p>
 
-  <p class="meta" style="margin-top:36px"><a href="./">← 앱으로 돌아가기</a></p>
+  <p class="meta" style="margin-top:36px"><a href="./">← PixieMap</a></p>
+  <nav class="langs" aria-label="언어">
+    <a href="privacy" hreflang="ko" lang="ko" aria-current="page">한국어</a>
+    <a href="en/privacy" hreflang="en" lang="en">English</a>
+    <a href="ja/privacy" hreflang="ja" lang="ja">日本語</a>
+    <a href="zh-hans/privacy" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
+    <a href="es/privacy" hreflang="es" lang="es">Español</a>
+  </nav>
 </main>
 </body>
 </html>

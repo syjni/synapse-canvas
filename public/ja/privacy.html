@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>プライバシーポリシー — PixieMap</title>
+<meta name="description" content="無料のローファイ・マインドマップPixieMapが端末とサーバーに保存する情報、国外移転、保存期間、削除の方法について説明します。">
+<link rel="canonical" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050509">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.8 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 6px; letter-spacing: .06em; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); font-size: 13px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  ul { padding-left: 20px; }
+  a { color: #B3ADFF; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; width: 34%; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./" style="text-decoration:none"><i></i>PIXIEMAP</a>
+  <h1>プライバシーポリシー</h1>
+  <p class="meta">PixieMap (https://pixiemap.pages.dev) · 施行日 2026-10-31</p>
+  <p class="meta">これは<a href="../privacy">韓国語の原文</a>の翻訳です。内容に違いがある場合は韓国語版が優先されます。</p>
+
+  <h2>1. 基本: 端末にだけ保存</h2>
+  <p>同期をオンにしない限り、PixieMapは作成したマップ(テキストボックス、写真、描画、線、カテゴリ)と設定を<strong>お使いの端末のブラウザのストレージ(IndexedDB)にだけ</strong>保存します。この場合、どんな情報もサーバーに送りません。</p>
+  <p>ログインや端末の連携のときに、この端末で作った内容があれば、アカウントに追加するか、アカウントの内容だけを使うかを確認します。選ぶまで、この端末の内容はサーバーに送りません。<strong>アカウントの内容だけ使う</strong>を選んだ場合は、切り替える前のこの端末のデータ(写真を含む)を<strong>この端末の中にだけ</strong>バックアップとして残し(最新3件)、サーバーには送りません。</p>
+
+  <h2>2. 同期をオンにした場合</h2>
+  <p>設定で同期をオンにすると、複数の端末で同じマップを使うために、以下の情報をSupabaseのサーバー(運営者が作成したプロジェクト、日本・東京リージョン)に保存します。国外移転については3項をご覧ください。</p>
+  <table>
+    <tr><th>ID・パスワード</th><td>ご自身で決めたIDとパスワード(パスワードはSupabaseがハッシュとしてのみ保管)。IDはサーバー内部で <code>ID@users.synapse.invalid</code> の形に変えて保存しますが、実在するメールアドレスではありません。</td></tr>
+    <tr><th>端末の鍵</th><td>連携した端末ごとに作られる匿名のユーザー識別子、端末名(入力したもの、または「iPhone Safari」のように自動生成されたもの)、連携した日時、最終接続日時</td></tr>
+    <tr><th>マップのデータ</th><td>カテゴリ、ボックス(テキスト・位置・サイズ)、線、ペンの描画、編集・削除の日時、設定(色など)</td></tr>
+    <tr><th>写真</th><td>ボックスに入れた写真(長辺1200pxに縮小したJPEG)</td></tr>
+  </table>
+  <p>ボット(自動登録)を防ぐため、ID作成・ログイン・端末の連携のときにCloudflare Turnstile(ロボット確認)を使います。この過程で、CloudflareがIPアドレスとブラウザの情報を処理します(3項)。</p>
+
+  <h2>3. 個人情報の国外移転</h2>
+  <p>同期をオンにした場合にのみ、以下のとおり個人情報が国外に移転されます。</p>
+  <table>
+    <tr><th>移転先</th><td>Supabase, Inc.<br>個人情報に関する問い合わせ: <a href="mailto:privacy@supabase.com">privacy@supabase.com</a> (Supabaseの公式窓口)</td></tr>
+    <tr><th>移転先の国</th><td>日本 (Supabase 東京リージョン、ap-northeast-1)</td></tr>
+    <tr><th>移転する項目</th><td>ID、マップのデータ(カテゴリ・ボックス・線・ペンの描画・設定)、添付した写真、端末名</td></tr>
+    <tr><th>移転の時期と方法</th><td>同期をオンにしたあと、変更があるたびに暗号化された通信(HTTPS)で送信</td></tr>
+    <tr><th>利用目的</th><td>端末間の同期</td></tr>
+    <tr><th>保存期間</th><td>アカウントを削除するまで。アカウントを削除すると、サーバーからすぐに削除されます。</td></tr>
+    <tr><th>拒否の方法とその影響</th><td>同期をオンにしなければ国外移転は起こらず、すべてのデータは端末にだけ保存されます。同期をオンにしなくてもアプリのすべての機能が使え、ほかの端末とそろえる機能だけが使えません。</td></tr>
+  </table>
+  <p>ボット対策(ロボット確認)のため、以下のとおりCloudflare Turnstileを使います。</p>
+  <table>
+    <tr><th>移転先</th><td>Cloudflare, Inc.<br>個人情報に関する問い合わせ: <a href="mailto:privacyquestions@cloudflare.com">privacyquestions@cloudflare.com</a></td></tr>
+    <tr><th>移転先の国</th><td>アメリカなどCloudflareが運営している国</td></tr>
+    <tr><th>移転する項目</th><td>IPアドレス、ブラウザ・端末の情報(ロボット確認用)</td></tr>
+    <tr><th>移転の時期と方法</th><td>ID作成・ログイン・端末の連携の画面でロボット確認をするときに、暗号化された通信(HTTPS)で送信</td></tr>
+    <tr><th>利用目的</th><td>自動登録や総当たりログインなどのボット対策</td></tr>
+    <tr><th>保存期間</th><td>Cloudflareのプライバシーポリシーによる</td></tr>
+    <tr><th>拒否の方法とその影響</th><td>同期をオンにしなければロボット確認は行いません。この場合、同期は使えません。</td></tr>
+  </table>
+
+  <h2>4. 収集しない情報</h2>
+  <ul>
+    <li>メールアドレス、電話番号、氏名など、そのほかの個人情報はいただきません。</li>
+    <li>広告・分析ツールやトラッキングCookieは使いません。</li>
+  </ul>
+
+  <h2>5. アクセスできる範囲</h2>
+  <p>サーバーのデータは行単位のセキュリティ(RLS)で保護されており、同じ保管庫に連携した鍵(ご自身のIDと、ご自身が連携した端末)だけが読み書きできます。写真の保存場所は非公開です。</p>
+
+  <h2>6. 保存期間と削除</h2>
+  <ul>
+    <li>削除した項目の記録(端末間で削除をそろえるための目印)は、30日後に整理されます。</li>
+    <li>「アカウントの内容だけ使う」を選んだときにこの端末に残したバックアップは、30日後に自動で削除されます。それまでは 設定 → 同期 → <strong>以前のデータを復元</strong> からアカウントに追加できます。ログアウトで「この端末のデータも消す」を選んだ場合も、あわせて削除されます。</li>
+    <li>設定 → 同期 → <strong>ログアウト</strong>: その端末の鍵が削除され、サーバーにアクセスできなくなります。この端末のデータを残すか消すかを選べます。ほかの端末の連携中の端末一覧で<strong>解除</strong>した場合も同じです。</li>
+    <li>設定 → 同期 → <strong>アカウント削除</strong>: 保管庫、サーバーのマップのデータ、写真、IDと端末の鍵が<strong>すべて削除</strong>されます。各端末の中のデータはそのまま残り、ブラウザで削除できます(サイトデータの削除)。</li>
+  </ul>
+
+  <h2>7. お問い合わせ</h2>
+  <p>個人情報に関するお問い合わせ: <span id="contact">運営者の連絡先をここに記入してください</span></p>
+
+  <p class="meta" style="margin-top:36px"><a href="./">← PixieMap</a></p>
+  <nav class="langs" aria-label="言語">
+    <a href="../privacy" hreflang="ko" lang="ko">한국어</a>
+    <a href="../en/privacy" hreflang="en" lang="en">English</a>
+    <a href="privacy" hreflang="ja" lang="ja" aria-current="page">日本語</a>
+    <a href="../zh-hans/privacy" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
+    <a href="../es/privacy" hreflang="es" lang="es">Español</a>
+  </nav>
+</main>
+</body>
+</html>

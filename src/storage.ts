@@ -4,6 +4,7 @@ import {
   type Persisted, type Data, DEF_PREFS, PREF_KEYS, zeroPrefsT, seed, normalizeData, purgeTombstones,
   referencedImages, maxStamp, observeClock, clockValue, visibleCats, uid,
 } from './model';
+import { getLang } from './i18n';
 
 const DB_NAME = 'synapse-canvas';
 const DB_VERSION = 2;   // 2: 기기 백업(backups) 저장소 추가
@@ -132,7 +133,7 @@ export async function loadAll(): Promise<{ state: Persisted; fresh: boolean }> {
   if (saved && saved.data && Array.isArray(saved.data.cats)) state = finish(saved);
   else {
     const legacy = await migrateLegacy();
-    state = finish(legacy || { schema: 2, data: seed(), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 });
+    state = finish(legacy || { schema: 2, data: seed(getLang()), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 });
     fresh = !legacy;
     await saveAll(state);
   }
@@ -149,7 +150,7 @@ export async function loadAll(): Promise<{ state: Persisted; fresh: boolean }> {
 export async function resetAll(): Promise<void> {
   await tx(IMAGES, 'readwrite', s => { s.clear(); });
   await tx(BACKUPS, 'readwrite', s => { s.clear(); });
-  await saveAll(finish({ schema: 2, data: seed(), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 }));
+  await saveAll(finish({ schema: 2, data: seed(getLang()), prefs: { ...DEF_PREFS }, prefsT: zeroPrefsT(), views: {}, active: '', clock: 0 }));
 }
 
 // 브라우저가 저장소를 임의로 비우지 않도록 영구 저장 요청 (첫 실행 시)

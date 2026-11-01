@@ -1,4 +1,5 @@
 import { PALETTE } from './lib/color';
+import SEED_TEXT from './i18n/seed.json';
 
 // ── 타입 ─────────────────────────────────────────────
 // 모든 항목은 updatedAt/deletedAt을 가진다. 삭제는 deletedAt만 기록(툼스톤)하고 화면에서 숨긴다.
@@ -54,10 +55,15 @@ export const liveLinks = (c: Category) => {
 export const liveStrokes = (c: Category) => c.strokes.filter(alive);
 
 // ── 초기 데이터 (dc.html seed()) ─────────────────────
-export function seed(): Data {
+// 예시 상자 글은 처음 실행한 기기의 언어로 (카테고리 이름 Mind·Ideas…는 원래 영어라 그대로).
+// 손대지 않은 예시인지 판단할 때(join·merge)는 모든 언어의 예시와 비교한다.
+export type SeedLang = keyof typeof SEED_TEXT;
+export const SEED_LANGS = Object.keys(SEED_TEXT) as SeedLang[];
+export function seed(lang: string = 'ko'): Data {
+  const tx: Record<string, string> = SEED_TEXT[(lang in SEED_TEXT ? lang : 'ko') as SeedLang];
   const t = tick();
   const st = { updatedAt: t, deletedAt: null };
-  const box = (id: string, x: number, y: number, w: number, h: number, text: string): Box => ({ id, type: 'text', x, y, w, h, text, ...st });
+  const box = (id: string, x: number, y: number, w: number, h: number): Box => ({ id, type: 'text', x, y, w, h, text: tx[id], ...st });
   let order = 0;
   const mk = (name: string, boxes: Box[] = [], links: [string, string][] = []): Category => ({
     id: uid(), name, order: ++order, boxes, links: links.map(([a, b]) => ({ id: uid(), a, b, ...st })), strokes: [], ...st,
@@ -65,18 +71,18 @@ export function seed(): Data {
   return {
     cats: [
       mk('Mind', [
-        box('m1', -130, -70, 250, 120, '# 오늘의 마음\n조금 **피곤하지만** 설렌다.\n*새로운 시작*'),
-        box('m2', 260, -250, 230, 150, '## 감사한 것\n- 따뜻한 커피\n- 저녁 산책\n- [x] 일찍 일어나기'),
-        box('m3', 280, 110, 230, 110, '> 천천히 가도 괜찮아.\n\n오늘의 문장'),
-        box('m4', -520, 80, 220, 140, '### 걱정\n1. 프로젝트 마감\n2. ~~운동 부족~~\n3. 잠'),
+        box('m1', -130, -70, 250, 120),
+        box('m2', 260, -250, 230, 150),
+        box('m3', 280, 110, 230, 110),
+        box('m4', -520, 80, 220, 140),
       ], [['m1', 'm2'], ['m1', 'm3'], ['m1', 'm4']]),
       mk('Ideas', [
-        box('i1', -140, -60, 270, 110, '# 생각 정리 앱\n무한 캔버스 + **마인드맵**'),
-        box('i2', 300, -220, 230, 150, '## 기능\n- 카테고리\n- Markdown 서식\n- `JSON` 백업'),
-        box('i3', 300, 120, 240, 130, '```\nroute(a, b)\n```\n상자를 피해 가는 직각 연결선'),
+        box('i1', -140, -60, 270, 110),
+        box('i2', 300, -220, 230, 150),
+        box('i3', 300, 120, 240, 130),
       ], [['i1', 'i2'], ['i1', 'i3']]),
       mk('Schedule', [
-        box('s1', -130, -90, 260, 180, '## November\n- [x] 리서치\n- [ ] 프로토타입\n- [ ] 피드백 반영\n\n---\n**11/14** 데모'),
+        box('s1', -130, -90, 260, 180),
       ]),
       mk('Custom 1'), mk('Custom 2'), mk('Custom 3'),
     ],

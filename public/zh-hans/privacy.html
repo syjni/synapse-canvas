@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>隐私政策 — PixieMap</title>
+<meta name="description" content="介绍免费低保真思维导图 PixieMap 在设备和服务器上保存哪些信息、跨境传输、保存期限以及删除方法。">
+<link rel="canonical" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050509">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.8 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 6px; letter-spacing: .06em; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); font-size: 13px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  ul { padding-left: 20px; }
+  a { color: #B3ADFF; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; width: 34%; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./" style="text-decoration:none"><i></i>PIXIEMAP</a>
+  <h1>隐私政策</h1>
+  <p class="meta">PixieMap (https://pixiemap.pages.dev) · 生效日期 2026-10-31</p>
+  <p class="meta">本文为<a href="../privacy">韩语原文</a>的译文。如有不一致，以韩语版本为准。</p>
+
+  <h2>1. 默认：只保存在设备上</h2>
+  <p>如果不开启同步，PixieMap 会把你创建的导图 (文本框、照片、绘画、连线、分类) 和设置<strong>只保存在当前设备的浏览器存储 (IndexedDB) 中</strong>。此时不会向服务器发送任何信息。</p>
+  <p>登录或关联设备时，如果这台设备上有自己的内容，会询问是添加到账号，还是只使用账号内容。在你选择之前，不会把这台设备的内容发送到服务器。如果选择<strong>只使用账号内容</strong>，切换前这台设备上的数据 (含照片) 会作为备份<strong>只保留在这台设备上</strong> (保留最近 3 份)，不会发送到服务器。</p>
+
+  <h2>2. 开启同步时</h2>
+  <p>在设置中开启同步后，为了在多台设备上使用同一份导图，会把以下信息保存到 Supabase 服务器 (运营者创建的项目，位于日本东京区域)。关于跨境传输，请参阅第 3 条。</p>
+  <table>
+    <tr><th>用户名与密码</th><td>你自己设定的用户名和密码 (密码仅由 Supabase 以哈希形式保存)。用户名在服务器内部会转换为 <code>用户名@users.synapse.invalid</code> 的形式保存，这不是真实的电子邮件地址。</td></tr>
+    <tr><th>设备密钥</th><td>为每台已关联设备生成的匿名用户标识、设备名称 (手动输入，或自动生成，例如“iPhone Safari”)、关联时间、上次在线时间</td></tr>
+    <tr><th>导图数据</th><td>分类、方框 (文字内容、位置、大小)、连线、笔迹、修改和删除时间、设置 (颜色等)</td></tr>
+    <tr><th>照片</th><td>放入方框的照片 (长边缩小到 1200px 的 JPEG)</td></tr>
+  </table>
+  <p>为防止机器人 (自动注册)，在创建用户名、登录和关联设备时使用 Cloudflare Turnstile (人机验证)。在此过程中，Cloudflare 会处理 IP 地址和浏览器信息 (第 3 条)。</p>
+
+  <h2>3. 个人信息的跨境传输</h2>
+  <p>只有在开启同步时，个人信息才会按以下方式传输到境外。</p>
+  <table>
+    <tr><th>接收方</th><td>Supabase, Inc.<br>个人信息咨询：<a href="mailto:privacy@supabase.com">privacy@supabase.com</a> (Supabase 官方隐私咨询邮箱)</td></tr>
+    <tr><th>接收国家</th><td>日本 (Supabase 东京区域，ap-northeast-1)</td></tr>
+    <tr><th>传输项目</th><td>用户名、导图数据 (分类、方框、连线、笔迹、设置)、附带的照片、设备名称</td></tr>
+    <tr><th>传输时间与方式</th><td>开启同步后，每次发生更改时通过加密网络 (HTTPS) 传输</td></tr>
+    <tr><th>使用目的</th><td>设备间同步</td></tr>
+    <tr><th>保存期限</th><td>直到注销账号为止。注销账号后会立即从服务器删除。</td></tr>
+    <tr><th>拒绝方式及影响</th><td>不开启同步就不会发生跨境传输，所有数据都只保存在设备上。不开启同步也能使用应用的全部功能，只是无法与其他设备保持一致。</td></tr>
+  </table>
+  <p>为防止机器人 (人机验证)，按以下方式使用 Cloudflare Turnstile。</p>
+  <table>
+    <tr><th>接收方</th><td>Cloudflare, Inc.<br>个人信息咨询：<a href="mailto:privacyquestions@cloudflare.com">privacyquestions@cloudflare.com</a></td></tr>
+    <tr><th>接收国家</th><td>美国等 Cloudflare 运营所在的国家</td></tr>
+    <tr><th>传输项目</th><td>IP 地址、浏览器和设备信息 (用于人机验证)</td></tr>
+    <tr><th>传输时间与方式</th><td>在创建用户名、登录、关联设备的页面进行人机验证时，通过加密网络 (HTTPS) 传输</td></tr>
+    <tr><th>使用目的</th><td>防止自动注册、暴力破解登录等机器人行为</td></tr>
+    <tr><th>保存期限</th><td>依照 Cloudflare 的隐私政策</td></tr>
+    <tr><th>拒绝方式及影响</th><td>不开启同步就不会进行人机验证。此时无法使用同步。</td></tr>
+  </table>
+
+  <h2>4. 不收集的信息</h2>
+  <ul>
+    <li>不收集电子邮件地址、电话号码、姓名等其他个人信息。</li>
+    <li>不使用广告、分析工具或跟踪 Cookie。</li>
+  </ul>
+
+  <h2>5. 访问范围</h2>
+  <p>服务器数据受行级安全 (RLS) 保护，只有关联到同一同步库的密钥 (你的用户名和你关联的设备) 才能读写。照片存储为非公开。</p>
+
+  <h2>6. 保存期限与删除</h2>
+  <ul>
+    <li>已删除项目的记录 (用于在设备间同步删除操作的标记) 会在 30 天后清理。</li>
+    <li>选择“只使用账号内容”时留在这台设备上的备份，会在 30 天后自动删除。在此之前，可以在 设置 → 同步 → <strong>恢复之前的数据</strong> 中添加到账号。退出登录时如果选择清除这台设备的数据，备份也会一并删除。</li>
+    <li>设置 → 同步 → <strong>退出登录</strong>：这台设备的密钥会被删除，之后无法再访问服务器。可以选择保留或清除这台设备的数据。在其他设备的已关联设备列表中<strong>移除</strong>也是同样效果。</li>
+    <li>设置 → 同步 → <strong>注销账号</strong>：同步库、服务器上的导图数据、照片、用户名和设备密钥会<strong>全部删除</strong>。各设备中的数据会保留，可以在浏览器中删除 (清除网站数据)。</li>
+  </ul>
+
+  <h2>7. 联系方式</h2>
+  <p>个人信息相关咨询：<span id="contact">请在此填写运营者的联系方式</span></p>
+
+  <p class="meta" style="margin-top:36px"><a href="./">← PixieMap</a></p>
+  <nav class="langs" aria-label="语言">
+    <a href="../privacy" hreflang="ko" lang="ko">한국어</a>
+    <a href="../en/privacy" hreflang="en" lang="en">English</a>
+    <a href="../ja/privacy" hreflang="ja" lang="ja">日本語</a>
+    <a href="privacy" hreflang="zh-Hans" lang="zh-Hans" aria-current="page">简体中文</a>
+    <a href="../es/privacy" hreflang="es" lang="es">Español</a>
+  </nav>
+</main>
+</body>
+</html>

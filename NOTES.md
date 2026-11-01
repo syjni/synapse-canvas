@@ -250,6 +250,85 @@ PGlite(WASM Postgres)에 Supabase의 `auth.uid()`, `auth.users`, `storage.object
 - 확인: 새 프로필에서 첫 방문은 소개 페이지, 시작하기 → /app, 앱을 쓴 뒤 / → /app(표시만 지워도 IndexedDB로 판단), ?intro는 소개. 서버를 끄고 /, /app, /privacy, /licenses가 서비스 워커로 열리고 /app 새로고침 가능
   - 홈 화면 앱(standalone)으로 여는 것은 실제 설치로는 확인하지 못함 — manifest start_url이 /app이고, standalone으로 / 를 열어도 /app으로 보내는 코드만 확인
 
+## 다국어 (한국어·English·日本語·简体中文·Español) (추가)
+
+### 구조
+- 앱 문구: `src/i18n/{ko,en,ja,zh-Hans,es}.json`. `t('키', { 값 })`로 꺼낸다(`src/i18n/index.ts`, 라이브러리 없이 약 100줄)
+  - 한국어는 기본·대체 언어라 번들에 같이 넣고, 나머지는 고를 때 불러온다(언어마다 약 5~6KB gzip)
+  - 복수형: `{ "one": "...", "other": "..." }` 객체 + `Intl.PluralRules`. 스페인어는 CLDR 규칙에 `many`(1000000 등)가 있어 세 범주를 둔다. 범주가 빠지면 `other`
+  - 날짜·시간: `Intl.DateTimeFormat`(저장 상태 SAVED 시각, 이전 기기 백업 날짜), `Intl.RelativeTimeFormat`(기기 목록 마지막 접속). 한국어는 기본값이 "오후 2:05"라 예전처럼 24시간제로 고정
+  - 사용 안내(MANUAL·GESTURES)는 `help.desktop/touch.<항목>`에 `[이름, 설명]`. 묶음 제목(CANVAS 등)·항목 순서는 `src/ui/help.ts`
+- 영문 대문자 픽셀 라벨은 모든 언어에서 그대로: 도구(SELECT·PAN…), PROPERTIES, SAVED·SAVING…·STORAGE FULL, SYNCED 등 동기화 상태, EXPORT·IMPORT, PREV·NEXT, TXT-01·EDIT_·SEL, n LINKS·n SELECTED, scroll ↓
+  - "SETTINGS / 설정"처럼 라벨 + 번역 설명인 머리글은 `dual()`. 번역이 라벨과 같으면(영어 "Settings") 라벨만 보여 준다
+  - "STORAGE FULL — 백업 권장", "편집 ENTER", "삭제 DEL"은 영문 부분은 고정, 설명만 번역
+- 언어 고르기: 앱에서 고른 언어(`pixiemap-lang`) → 소개 페이지에서 고른 언어(`pixiemap-site-lang`) → `navigator.languages` 중 지원 언어 → 영어
+  - 중국어: zh·zh-CN·zh-SG·zh-Hans-* → 간체, zh-TW·zh-HK·zh-MO·zh-Hant-* → 건너뜀(다음 선호 언어, 없으면 영어)
+  - 기기별 localStorage. prefs가 아니라 동기화되지 않는다. `<html lang>`과 창 제목도 바꾼다
+  - 설정 맨 위 "언어 · Language": 각 언어를 그 언어 이름으로. 읽지 못하는 언어로 바뀌어도 찾을 수 있게 영어 외 언어에서는 "· Language"를 함께 적는다
+- 예시 데이터: 카테고리 이름(Mind·Ideas·Schedule·Custom n)은 모든 언어에서 영어 그대로, **예시 상자 글은 처음 실행한 기기의 언어로** 만든다(`src/i18n/seed.json`)
+  - 요청에는 없던 판단: 일본어 기기에서 한국어 예시가 뜨는 게 어색해서. 기기마다 처음 언어가 다를 수 있으므로 "손대지 않은 예시" 판단(`isPristineSeed`, `join.ts`의 `isExample`)은 다섯 언어의 예시 모두와 비교한다
+  - 이미 쓰던 기기의 예시 글(한국어)은 바꾸지 않는다(사용자 데이터)
+- 계정 삭제 확인 낱말도 언어별(삭제·delete·削除·删除·eliminar, 대소문자 무시)
+
+### 폰트
+- 갈무리 3종(Galmuri11·GalmuriMono11·GalmuriMono9)으로 실제 문구의 글자를 검사(`tests/i18n.test.ts`): 한국어·영어·일본어·스페인어는 모두 있음(가나·JIS 한자·¿¡ñ·«»·“” 포함)
+  - ⛶ ✕ ⌘는 원래부터 갈무리에 없어 시스템 글꼴로 나오던 기호라 예외로 둠
+- 중국어 간체: 갈무리에 GB2312 1급 간체자 3,755자 중 1,374자가 없음. 앱 문구에 쓰는 505자 중 159자가 없어 **퓨전 픽셀 12px 간체(zh_hans, SIL OFL 1.1, v2026.10.25)**를 씀
+  - `scripts/subset-zh-font.mjs`가 앱·소개 페이지 중국어 문구 + 언어 이름에 쓰인 한자·문장부호만 남긴 서브셋(`src/fonts/fusion-pixel-12px-zh_hans.subset.woff2`, 505자 20KB)을 만든다. 원본 ttf(7MB)는 저장소에 넣지 않음
+  - **문구를 바꾸면 다시 만들어야 한다**: `node scripts/subset-zh-font.mjs <fusion-pixel-12px-proportional-zh_hans.ttf>` (원본은 GitHub releases). 빠진 글자가 있으면 테스트가 실패한다
+  - 앱: 중국어 간체일 때만 `src/i18n/font.ts`가 같은 이름(Galmuri11 등)에 `unicode-range`(한자·한중일 문장부호·전각) @font-face를 덧붙인다. 겹치는 범위는 나중 선언이 먼저라 **한자는 모두 퓨전 픽셀**로 맞춰진다(갈무리에 있는 한자까지 바꾼 이유: 한 문장 안에서 11px 한국식 한자와 12px 간체가 섞여 크기·자형이 들쭉날쭉해서). 서브셋에 없는 글자(사용자가 쓴 글)는 갈무리 → 시스템 글꼴
+  - 소개 페이지·언어 선택 버튼: `FusionPixelZh` @font-face(같은 파일) + `:lang(zh-Hans)`. 쓰는 화면에서만 받는다
+  - 오픈소스 라이선스 화면·/licenses에 퓨전 픽셀 항목 추가. 이 폰트가 포함한 Ark Pixel(OFL)·Cubic 11·갈무리 글리프의 고지도 `src/fonts/fusion-pixel-LICENSE.txt`에 함께 실었다
+
+### 소개 페이지·문서
+- `scripts/site.mjs`가 `src/i18n/site/<언어>.json`으로 `/`(한국어)·`/en/`·`/ja/`·`/zh-hans/`·`/es/` 정적 HTML과 `public/sitemap.xml`을 만든다. **문구를 바꾸면 `node scripts/site.mjs`** (테스트가 결과 파일이 최신인지 검사)
+  - 각 페이지: lang·title·description·canonical·OG/Twitter·og:locale(+alternate)·JSON-LD(FAQ 포함) 번역, hreflang 5개 + x-default(영어)로 서로 연결, 하단 언어 전환 링크
+  - 사이트맵: 소개·개인정보처리방침·오픈소스 라이선스 × 5개 언어 = 15개 주소, 각각 `xhtml:link` 대체 언어
+  - 오픈소스 라이선스 페이지도 언어별(`/en/licenses` …) — `scripts/licenses.mjs`
+- **루트(/) 첫 방문 언어 이동**(루트 페이지의 인라인 스크립트만, `/en/` 등 언어 페이지에는 없음)
+  - 기존 사용자 → `/app`(예전 그대로)을 먼저 보고, 아니면 `pixiemap-site-lang`이 있으면 그 언어로, 없으면 기기 언어로 정해 **저장한 뒤** 이동(한국어면 그대로). 하단 언어 링크를 누르면 그 언어로 바뀐다
+  - 검색엔진·미리보기 봇(UA에 bot·crawl·spider·Yeti·Daum·HeadlessChrome 등)과 `navigator.webdriver`는 옮기지 않고 저장도 안 한다
+  - 언어 고르는 규칙은 `pickLang`과 같다(테스트에서 비교). `?intro`는 캔버스로 보내지 않을 뿐 언어 이동은 하며 쿼리를 유지한다
+- 개인정보처리방침: `public/{,en/,ja/,zh-hans/,es/}privacy.html`. 번역본에는 "한국어 원문과 다르면 한국어판 우선" 문장을 넣었다. 앱의 동기화 화면 링크는 현재 언어의 방침으로
+- `STORE_LISTING.md`: Microsoft Store 문구 5개 언어(제목은 모두 PixieMap, 동기화는 "베타 기간 무료")
+
+### 레이아웃 점검 (빌드 결과를 미리보기 서버로)
+- 5개 언어 × (1024px · 700px · 375px 폰) × 13개 상태(평소·설정·속성 1개/2개/폰 시트 펼침·안내·비우기 확인·연결 선택 2단계·LINK 안내 2종·iOS 안내·STORAGE FULL)에서
+  글자가 잘리거나(가로 넘침·버튼 높이 넘침) 버튼 글자가 두 줄로 꺾이거나 화면 밖으로 나가는 요소를 스크립트로 찾고, 스크린샷으로 확인
+  - 걸린 것: 스페인어 폰의 연결 선택 버튼 "Añadir a la cuenta (predet.)" 두 줄 → "(predet.)"를 뺐다(채워진 기본 버튼이라 기본값임이 보임)
+  - 상단 바 부제가 ja·en·es에서 한국어보다 40~70px 길어 탭 자리를 먹어서 짧게 고침(앱·소개 페이지 같은 문구)
+  - 스페인어 예시 상자 m1이 한 줄 넘쳐 문장을 줄임
+- 미리보기 창(Claude 앱의 내장 브라우저)은 `navigator.windowControlsOverlay.visible`이 브라우저 탭에서도 true라 상단 바가 Windows 앱 모드(창 너비 기준)로 그려진다. 점검 때는 이 값을 끄고 봤다. 실제 브라우저·설치 앱과는 무관하지만, 필요하면 `display-mode: window-controls-overlay`도 함께 확인하도록 바꿀 수 있다
+
+### 번역이 애매했던 문구 (원어민 검토 요청)
+
+| 원문 | 번역 | 메모 |
+|---|---|---|
+| 보관함 (계정의 서버 저장 공간) | vault · 保管庫 · 同步库 · bóveda | 중국어는 "保管库/保险库"가 어색해 "同步库"로. 영어·스페인어 "vault/bóveda"가 과한지 |
+| 열쇠 (아이디 열쇠·기기 열쇠) | key · 鍵 · 密钥 · llave | 중국어 "密钥"는 암호 키 느낌. "凭证"도 후보 |
+| 아이디 | username · ID · 用户名 · usuario | 일본어는 "ID"가 자연스러워 그대로 |
+| 기기를 연결/연결 코드 | link · 連携 · 关联 · vincular | 일본어 "連携", 중국어 "关联"이 적절한지 |
+| 상자 | box · ボックス · 方框 · caja | 중국어 "方框"은 도형 느낌. "卡片/节点"도 후보 |
+| 연결 / 연결선 | links · つながり/線 · 连线 · uniones/líneas | 속성 패널의 "연결"과 개수 칸의 "연결선"을 원문처럼 구분 |
+| 펜 획 | strokes · ペン · 笔迹 · trazos | 일본어는 칸이 좁아 "ペン"으로 줄임 |
+| 로파이 | lo-fi · ローファイ · 低保真 · lo-fi | 중국어 "低保真"은 직역. 중국에서도 "lo-fi"를 그대로 쓰는 경우가 많음 |
+| 감성 가득한 (소개 제목) | cozy · 雰囲気のある · 有氛围感 · con encanto | 검색 키워드로서 자연스러운지 |
+| 생각을 잇는 로파이 마인드맵 (부제) | a lo-fi map of linked ideas · 思考をつなぐローファイマップ · 连接思绪的低保真思维导图 · mapa lo-fi de ideas unidas | 상단 바 자리 때문에 짧게 줄인 번역 |
+| 신호 펄스 (뉴런 발화) | Signal pulse (neurons firing) · 信号パルス (ニューロン発火) · 信号脉冲 (神经元放电) · Pulso de señal (neuronas) | 스페인어는 길이 때문에 "발화"를 뺌 |
+| 계정에 추가하기 (기본) / 계정 내용만 불러오기 | Add to account (default) / Use account only · アカウントに追加 (標準) / アカウントの内容だけ使う · 添加到账号 (默认) / 只使用账号内容 · Añadir a la cuenta / Usar solo la cuenta | 스페인어는 "(기본)"을 뺌 |
+| 백업 권장 (STORAGE FULL — …) | back up soon · バックアップを推奨 · 建议备份 · haz una copia | |
+| 전체 보기 (하단 버튼) | Fit · 全体表示 · 显示全部 · Ajustar | |
+| 계정 삭제 (확인 낱말 '삭제') | delete · 削除 · 删除(注销账号) · eliminar | 중국어 버튼은 "注销账号", 확인 낱말은 "删除" |
+| 예시 상자 글 (`seed.json`) | 언어별 | 스페인어 "피곤하지만 설렌다"는 성별이 드러나지 않게 "Con sueño, pero con ganas."로 바꿈 |
+| 스페인어 지역색 | | "PC"(ordenador/computadora 회피), "teléfono"(móvil/celular 회피), tú 사용, vosotros 없음. "Añadir"는 스페인 쪽, 중남미는 "Agregar"도 흔함. STORE_LISTING의 "ratón"은 중남미에서 "mouse" |
+| 개인정보처리방침 | 4개 언어 | 법률 문서라 원어민·법률 검토 필요. 특히 "국외 이전"·"거부 방법과 영향" 표 항목명 |
+
+### 확인하지 못한 것
+- 소개 페이지 화면 이미지(`screen.webp`)와 링크 미리보기(`og.png`)는 한국어 앱 화면 그대로. 언어별로 다시 찍으면 좋다
+- PWA manifest의 `description`·`lang`은 한국어 하나(manifest는 언어별로 나눌 수 없음)
+- Microsoft Store 길이 제한은 작성 시점 기준. 제출할 때 Partner Center에서 다시 확인
+- 실제 기기 언어를 바꾼 휴대폰에서의 첫 방문 이동은 확인하지 못함(미리보기 창은 기기 언어가 한국어 고정 — 저장된 선택으로 /ja/ 이동과 테스트의 가짜 navigator로 확인)
+
 ## 확인하지 못한 것 / 남은 한계
 
 - **실제 Supabase로는 돌려 보지 못했습니다.** Docker Desktop이 이 PC에서 켜지지 않았고, Supabase 계정·프로젝트도 없습니다. 그래서 아래는 아직 실제 서버에서 확인하지 않았습니다.

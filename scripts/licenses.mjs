@@ -2,6 +2,7 @@
 // 패키지마다 이름·버전·라이선스 종류·저작권 줄·라이선스 전문을 담는다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { SITE_LANGS, siteDict, alternates, langNav } from './site.mjs';
 
 const NM = '/node_modules/';
 
@@ -45,25 +46,27 @@ function info(dir) {
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// /licenses 페이지 (개인정보처리방침과 같은 모양)
-function page(list) {
+// /licenses 페이지 (개인정보처리방침과 같은 모양). 언어별로 /licenses, /en/licenses …
+function page(list, L) {
+  const t = siteDict(L.code), p = t.licensesPage, up = L.dir ? '../' : '';
   const items = list.map(x => `
   <section>
     <h2>${esc(x.name)} <span class="v">${esc(x.version)} · ${esc(x.license)}</span></h2>
     ${x.copyright.map(c => `<p class="c">${esc(c)}</p>`).join('')}
     ${x.url ? `<p class="c"><a href="${esc(x.url)}" rel="noopener">${esc(x.url)}</a></p>` : ''}
-    ${x.text ? `<details><summary>라이선스 전문</summary><pre>${esc(x.text)}</pre></details>` : ''}
+    ${x.text ? `<details><summary>${esc(p.fullText)}</summary><pre>${esc(x.text)}</pre></details>` : ''}
   </section>`).join('');
   return `<!doctype html>
-<html lang="ko">
+<html lang="${L.code}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>오픈소스 라이선스 — PixieMap</title>
-<meta name="description" content="무료 로파이 마인드맵 PixieMap에 쓰인 갈무리 폰트와 오픈소스 라이브러리의 저작권·라이선스 전문입니다.">
-<link rel="canonical" href="https://pixiemap.pages.dev/licenses">
+<title>${esc(p.title)}</title>
+<meta name="description" content="${esc(p.description)}">
+<link rel="canonical" href="https://pixiemap.pages.dev/${L.dir}licenses">
+${alternates('licenses', '')}
 <meta name="theme-color" content="#050509">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="${up}favicon.svg" type="image/svg+xml">
 <style>
   :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
   html, body { margin: 0; background: #050509; color: var(--fg); }
@@ -78,15 +81,19 @@ function page(list) {
   a { color: #B3ADFF; }
   summary { cursor: pointer; color: var(--dim); font-size: 13px; margin-top: 6px; }
   pre { white-space: pre-wrap; font-size: 12px; line-height: 1.6; color: var(--dim); background: rgba(217,218,240,.04); padding: 12px; overflow-wrap: anywhere; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
 </style>
 </head>
 <body>
 <main>
   <a class="logo" href="./"><i></i>PIXIEMAP</a>
-  <h1>오픈소스 라이선스</h1>
-  <p class="meta">PixieMap은 아래 폰트와 오픈소스 소프트웨어를 사용합니다. 각 저작권자에게 감사드립니다.</p>
+  <h1>${esc(p.heading)}</h1>
+  <p class="meta">${esc(p.intro)}</p>
   ${items}
-  <p class="meta" style="margin-top:32px"><a href="./">PixieMap 소개</a> · <a href="privacy">개인정보처리방침</a></p>
+  <p class="meta" style="margin-top:32px"><a href="./">${esc(p.home)}</a> · <a href="privacy">${esc(t.privacy)}</a></p>
+  ${langNav(L, up, t.languages, 'licenses')}
 </main>
 </body>
 </html>
@@ -94,7 +101,8 @@ function page(list) {
 }
 
 // extra: 모듈 그래프로는 안 잡히는 패키지 (CSS에서 쓰는 폰트, 서비스 워커에 들어가는 workbox)
-export default function licenses(extra = []) {
+// local: npm 패키지가 아닌 동봉 파일 { name, version, license, copyright, url, textFile } (예: 퓨전 픽셀 서브셋 폰트)
+export default function licenses(extra = [], local = []) {
   return {
     name: 'collect-licenses',
     apply: 'build',
@@ -110,10 +118,11 @@ export default function licenses(extra = []) {
       }
       const byName = new Map();
       for (const d of dirs) { const x = info(d); byName.set(x.name, x); }
+      for (const { textFile, ...x } of local) byName.set(x.name, { ...x, text: fs.readFileSync(textFile, 'utf8').trim() });
       const list = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
       this.emitFile({ type: 'asset', fileName: 'licenses.json', source: JSON.stringify(list) });
-      // 같은 내용을 검색엔진도 읽을 수 있는 정적 페이지로 (/licenses)
-      this.emitFile({ type: 'asset', fileName: 'licenses.html', source: page(list) });
+      // 같은 내용을 검색엔진도 읽을 수 있는 정적 페이지로 (/licenses, /en/licenses …)
+      for (const L of SITE_LANGS) this.emitFile({ type: 'asset', fileName: L.dir + 'licenses.html', source: page(list, L) });
     },
   };
 }

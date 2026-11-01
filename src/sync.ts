@@ -12,6 +12,7 @@ import { alive, type Category, type Data } from './model';
 import { stableStringify, isPristineSeed, type PrefsBundle } from './merge';
 import { createImageStore, type ImageStore } from './imageStore';
 import { planJoin, type JoinPlan } from './join';
+import { t } from './i18n';
 
 // ── 서버 접근 (테스트에서 다른 구현으로 바꿔 끼울 수 있게 인터페이스로) ──
 export type Member = { vault_id: string; user_id: string; kind: 'password' | 'device'; login_id: string | null; device_name: string; created_at: string; last_seen_at: string };
@@ -329,8 +330,8 @@ const liveImageIds = (d: Data) => {
 
 export const ID_RE = /^[a-z0-9_]{4,20}$/;
 export const idToEmail = (id: string) => `${id}@users.synapse.invalid`;
-export const checkId = (id: string) => (ID_RE.test(id) ? null : '아이디는 영문 소문자·숫자·_ 4~20자입니다.');
-export const checkPw = (pw: string) => (pw.length >= 6 ? null : '비밀번호는 6자 이상입니다.');
+export const checkId = (id: string) => (ID_RE.test(id) ? null : t('err.idRule'));
+export const checkPw = (pw: string) => (pw.length >= 6 ? null : t('err.pwRule'));
 
 // Supabase 오류 → 화면 문구. error_code(code)를 먼저 보고, 예전 버전처럼 code가 없으면 메시지로 판단한다.
 // 아이디는 내부에서 가짜 이메일로 바뀌므로 화면 문구에는 "이메일"이라는 말을 쓰지 않는다.
@@ -348,28 +349,28 @@ export function isRateLimited(e: unknown) {
 export function friendly(e: unknown): string {
   const { m, c } = errParts(e);
   const has = (re: RegExp) => re.test(c) || re.test(m);
-  if (isRateLimited(e)) return '잠시 후 다시 시도해주세요';
-  if (has(/^(user_already_exists|email_exists)$|already registered|already exists/i)) return '이미 사용 중인 아이디예요';
-  if (has(/^weak_password$/)) return '비밀번호가 너무 짧아요 (6자 이상)';
-  if (has(/^invalid_credentials$|invalid login credentials/i)) return '아이디 또는 비밀번호가 맞지 않아요';
-  if (has(/^same_password$|should be different/i)) return '새 비밀번호가 이전과 같아요';
-  if (has(/^email_address_invalid$/)) return '쓸 수 없는 아이디예요';
-  if (has(/^captcha_failed$|captcha/i)) return '사람 확인(CAPTCHA)에 실패했어요. 다시 시도해주세요';
-  if (has(/^anonymous_provider_disabled$|anonymous sign-ins are disabled/i)) return '서버에서 익명 로그인이 꺼져 있어요 (DEPLOY.md 2단계 참고)';
-  if (has(/^signup_disabled$|signups not allowed/i)) return '서버에서 가입이 꺼져 있어요 (DEPLOY.md 2단계 참고)';
-  if (has(/^email_not_confirmed$|email not confirmed/i)) return '서버 설정 때문에 가입을 마칠 수 없어요 (DEPLOY.md 2단계의 확인 기능 끄기 참고)';
-  if (has(/invalid_code/)) return '코드가 맞지 않거나 만료되었어요';
-  if (has(/too_many_attempts/)) return '시도가 너무 많아요. 10분 뒤 다시 해주세요';
-  if (has(/last_key/)) return '마지막 열쇠는 해제할 수 없어요. 계정 삭제를 사용하세요';
-  if (has(/fetch|network|load failed|timeout|^offline$/i)) return '서버에 연결할 수 없어요. 인터넷 연결 또는 서버 상태(일시정지)를 확인하세요';
+  if (isRateLimited(e)) return t('err.rateLimited');
+  if (has(/^(user_already_exists|email_exists)$|already registered|already exists/i)) return t('err.idTaken');
+  if (has(/^weak_password$/)) return t('err.weakPassword');
+  if (has(/^invalid_credentials$|invalid login credentials/i)) return t('err.badLogin');
+  if (has(/^same_password$|should be different/i)) return t('err.samePassword');
+  if (has(/^email_address_invalid$/)) return t('err.badId');
+  if (has(/^captcha_failed$|captcha/i)) return t('err.captcha');
+  if (has(/^anonymous_provider_disabled$|anonymous sign-ins are disabled/i)) return t('err.anonDisabled');
+  if (has(/^signup_disabled$|signups not allowed/i)) return t('err.signupDisabled');
+  if (has(/^email_not_confirmed$|email not confirmed/i)) return t('err.notConfirmed');
+  if (has(/invalid_code/)) return t('err.badCode');
+  if (has(/too_many_attempts/)) return t('err.tooManyAttempts');
+  if (has(/last_key/)) return t('err.lastKey');
+  if (has(/fetch|network|load failed|timeout|^offline$/i)) return t('err.network');
   console.error('[PixieMap] 동기화 오류', c || '(code 없음)', m);
-  return '연결에 실패했어요';
+  return t('err.unknown');
 }
 
 export function defaultDeviceName(): string {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
-    : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '기기';
+    : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : t('device.unknown');
   const br = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
   return br ? `${os} ${br}` : os;
 }

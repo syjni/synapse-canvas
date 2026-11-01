@@ -1,3 +1,5 @@
+import { t } from './i18n';
+
 // Cloudflare Turnstile — 아이디 만들기·로그인·익명 로그인(기기 열쇠)에 사용.
 // VITE_TURNSTILE_SITE_KEY가 없으면 CAPTCHA 없이 진행한다(Supabase 쪽에서도 꺼져 있어야 함).
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
@@ -19,7 +21,7 @@ function load(): Promise<void> {
       s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
       s.async = true;
       s.onload = () => resolve();
-      s.onerror = () => { loading = null; reject(new Error('CAPTCHA를 불러올 수 없습니다 (인터넷 연결 확인)')); };
+      s.onerror = () => { loading = null; reject(new Error(t('err.captchaLoad'))); };
       document.head.appendChild(s);
     });
   }

@@ -9,14 +9,20 @@ const base = process.env.BASE_PATH || '/';
 
 export default defineConfig({
   base,
-  // 소개 페이지(index.html → /)와 앱(app.html → /app). Cloudflare Pages는 app.html을 /app으로 서비스한다
-  build: { rollupOptions: { input: { main: 'index.html', app: 'app.html' } } },
+  // 소개 페이지(index.html → /, 언어별 en/·ja/·zh-hans/·es/ — scripts/site.mjs가 만든다)와 앱(app.html → /app).
+  // Cloudflare Pages는 app.html을 /app으로 서비스한다
+  build: { rollupOptions: { input: { main: 'index.html', en: 'en/index.html', ja: 'ja/index.html', 'zh-hans': 'zh-hans/index.html', es: 'es/index.html', app: 'app.html' } } },
   plugins: [
     react(),
     // 개발·미리보기 서버에서도 /app·/privacy·/licenses가 열리게 (Pages와 같은 주소)
     pages(),
     // 오픈소스 라이선스 화면용 licenses.json (폰트·서비스 워커의 workbox는 모듈 그래프 밖이라 직접 지정)
-    licenses(['galmuri', 'workbox-core', 'workbox-precaching', 'workbox-routing']),
+    // 퓨전 픽셀 폰트는 npm 패키지가 아니라 서브셋 파일을 동봉한다 (scripts/subset-zh-font.mjs)
+    licenses(['galmuri', 'workbox-core', 'workbox-precaching', 'workbox-routing'], [{
+      name: 'fusion-pixel-font', version: '2026.10.25', license: 'OFL-1.1',
+      copyright: ['Copyright (c) 2022, TakWolf (https://takwolf.com)', 'Copyright (c) 2021, TakWolf (Ark Pixel Font)', 'Cubic 11 · JF Dot M+H 12 · Galmuri (included glyphs)'],
+      url: 'https://github.com/TakWolf/fusion-pixel-font', textFile: 'src/fonts/fusion-pixel-LICENSE.txt',
+    }]),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',

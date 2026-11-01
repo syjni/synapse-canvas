@@ -5,7 +5,7 @@
 //   같은 id·같은 내용인 항목과 손대지 않은 초기 예시 상자는 이미 있는 것으로 보고 넣지 않는다
 //   (예시 상자 id는 기기마다 같아서, 계정 쪽에서 고친 예시 상자 옆에 원래 예시가 하나 더 생기지 않게)
 // - 짝이 없는 카테고리: 새 카테고리로 탭 끝에 추가. 단 손대지 않은 예시뿐인 초기 카테고리(Custom 1 등)는 넣지 않는다
-import { alive, uid, observeClock, maxStamp, seed, type Box, type Category, type Data, type Link, type Stroke } from './model';
+import { alive, uid, observeClock, maxStamp, seed, SEED_LANGS, type Box, type Category, type Data, type Link, type Stroke } from './model';
 import { mergeCategory, stableStringify } from './merge';
 
 export const JOIN_GAP = 120;
@@ -17,11 +17,14 @@ export type JoinPlan = {
   account: { cats: number; boxes: number };  // 계정(서버)의 살아 있는 카테고리·상자 수
 };
 
-// 초기 예시(seed) 상자의 내용. 이 내용 그대로인 상자 = 손대지 않은 예시
+// 초기 예시(seed) 상자의 내용. 이 내용 그대로인 상자 = 손대지 않은 예시 (기기마다 처음 언어가 다를 수 있어 모든 언어의 예시)
 const boxKey = (b: Box) => stableStringify([b.type, b.x, b.y, b.w, b.h, b.text ?? null, b.imageId ?? null, b.head ?? null]);
-const SEED_BOX = new Map<string, string>(), SEED_NAMES = new Set<string>();
-for (const c of seed().cats) { SEED_NAMES.add(c.name); for (const b of c.boxes) SEED_BOX.set(b.id, boxKey(b)); }
-const isExample = (b: Box) => SEED_BOX.get(b.id) === boxKey(b);
+const SEED_BOX = new Map<string, Set<string>>(), SEED_NAMES = new Set<string>();
+for (const l of SEED_LANGS) for (const c of seed(l).cats) {
+  SEED_NAMES.add(c.name);
+  for (const b of c.boxes) { if (!SEED_BOX.has(b.id)) SEED_BOX.set(b.id, new Set()); SEED_BOX.get(b.id)!.add(boxKey(b)); }
+}
+const isExample = (b: Box) => !!SEED_BOX.get(b.id)?.has(boxKey(b));
 
 type Pair = { kind: 'same' | 'name'; cat: Category } | { kind: 'new' };
 const sameContent = (a: object, b: object) => stableStringify({ ...a, updatedAt: 0, deletedAt: 0 }) === stableStringify({ ...b, updatedAt: 0, deletedAt: 0 });

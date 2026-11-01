@@ -6,7 +6,7 @@
 // - updatedAt이 같으면 내용 문자열을 비교해 어느 기기에서 병합해도 같은 결과가 나오게 한다
 // - 항목 순서는 서버(remote) 순서 + 로컬에만 있는 항목 순 → 기기들이 같은 순서로 수렴
 import type { Category, Data, Prefs, PrefsT, Stamp } from './model';
-import { PREF_KEYS, observeClock, maxStamp, seed } from './model';
+import { PREF_KEYS, observeClock, maxStamp, seed, SEED_LANGS } from './model';
 
 // 키 순서와 상관없이 같은 문자열 (jsonb 왕복 후에도 비교 가능)
 export function stableStringify(v: unknown): string {
@@ -100,7 +100,7 @@ export function mergePrefs(local: PrefsBundle, remote: PrefsBundle): PrefsBundle
 }
 
 // 처음 실행 후 아무것도 고치지 않은 초기 데이터인지 (새 기기를 보관함에 연결할 때 초기 예시가 중복되지 않게)
-// 시각이 모두 같고(한 번도 수정 안 함) 내용도 seed()와 같아야 한다 — 이전 버전에서 옮겨온 데이터도 시각이 모두 같으므로 내용까지 비교
+// 시각이 모두 같고(한 번도 수정 안 함) 내용도 어느 언어든 seed()와 같아야 한다 — 이전 버전에서 옮겨온 데이터도 시각이 모두 같으므로 내용까지 비교
 export function isPristineSeed(d: Data): boolean {
   const stamps = new Set<number>();
   for (const c of d.cats) {
@@ -114,5 +114,6 @@ export function isPristineSeed(d: Data): boolean {
     boxes: c.boxes.map(b => ({ id: b.id, type: b.type, x: b.x, y: b.y, w: b.w, h: b.h, text: b.text ?? null, image: b.imageId ?? null, head: b.head ?? null })),
     links: c.links.map(l => [l.a, l.b]),
   })));
-  return shape(d) === shape(seed());
+  const mine = shape(d);
+  return SEED_LANGS.some(l => mine === shape(seed(l)));
 }

@@ -4,7 +4,7 @@
 
 - 주소: https://pixiemap.pages.dev/ (앱 화면: https://pixiemap.pages.dev/app)
 - 가격: 무료 (결제·구독 없음)
-- 언어: 한국어
+- 언어: 한국어, English, 日本語, 简体中文, Español (소개 페이지: /, /en/, /ja/, /zh-hans/, /es/)
 - 플랫폼: 웹 브라우저, Windows·iOS·iPadOS·Android에 앱으로 설치 가능(PWA), 오프라인 동작
 
 ## 주요 기능
@@ -20,6 +20,6 @@
 
 ## 링크
 
-- [소개](https://pixiemap.pages.dev/)
+- [소개](https://pixiemap.pages.dev/) · [English](https://pixiemap.pages.dev/en/) · [日本語](https://pixiemap.pages.dev/ja/) · [简体中文](https://pixiemap.pages.dev/zh-hans/) · [Español](https://pixiemap.pages.dev/es/)
 - [개인정보처리방침](https://pixiemap.pages.dev/privacy)
 - [오픈소스 라이선스](https://pixiemap.pages.dev/licenses)

@@ -1,0 +1,52 @@
+{
+  "ko": {
+    "m1": "# 오늘의 마음\n조금 **피곤하지만** 설렌다.\n*새로운 시작*",
+    "m2": "## 감사한 것\n- 따뜻한 커피\n- 저녁 산책\n- [x] 일찍 일어나기",
+    "m3": "> 천천히 가도 괜찮아.\n\n오늘의 문장",
+    "m4": "### 걱정\n1. 프로젝트 마감\n2. ~~운동 부족~~\n3. 잠",
+    "i1": "# 생각 정리 앱\n무한 캔버스 + **마인드맵**",
+    "i2": "## 기능\n- 카테고리\n- Markdown 서식\n- `JSON` 백업",
+    "i3": "```\nroute(a, b)\n```\n상자를 피해 가는 직각 연결선",
+    "s1": "## November\n- [x] 리서치\n- [ ] 프로토타입\n- [ ] 피드백 반영\n\n---\n**11/14** 데모"
+  },
+  "en": {
+    "m1": "# Today's mood\nA bit **tired**, but excited.\n*A fresh start*",
+    "m2": "## Grateful for\n- Warm coffee\n- An evening walk\n- [x] Waking up early",
+    "m3": "> It's okay to go slowly.\n\nToday's line",
+    "m4": "### Worries\n1. Project deadline\n2. ~~Not enough exercise~~\n3. Sleep",
+    "i1": "# A thinking app\nInfinite canvas + **mind map**",
+    "i2": "## Features\n- Categories\n- Markdown formatting\n- `JSON` backup",
+    "i3": "```\nroute(a, b)\n```\nRight-angle links that route around boxes",
+    "s1": "## November\n- [x] Research\n- [ ] Prototype\n- [ ] Apply feedback\n\n---\n**Nov 14** Demo"
+  },
+  "ja": {
+    "m1": "# 今日の気持ち\nちょっと**疲れた**けど、わくわく。\n*新しいはじまり*",
+    "m2": "## 感謝していること\n- あたたかいコーヒー\n- 夕方の散歩\n- [x] 早起き",
+    "m3": "> ゆっくりでも大丈夫。\n\n今日のことば",
+    "m4": "### 心配ごと\n1. プロジェクトの締め切り\n2. ~~運動不足~~\n3. 睡眠",
+    "i1": "# 思考整理アプリ\n無限キャンバス + **マインドマップ**",
+    "i2": "## 機能\n- カテゴリ\n- Markdown 書式\n- `JSON` バックアップ",
+    "i3": "```\nroute(a, b)\n```\nボックスをよけて進む直角の線",
+    "s1": "## November\n- [x] リサーチ\n- [ ] プロトタイプ\n- [ ] フィードバック反映\n\n---\n**11/14** デモ"
+  },
+  "zh-Hans": {
+    "m1": "# 今天的心情\n有点**累**，但很期待。\n*新的开始*",
+    "m2": "## 感恩的事\n- 一杯热咖啡\n- 傍晚散步\n- [x] 早起",
+    "m3": "> 慢一点也没关系。\n\n今日一句",
+    "m4": "### 担心的事\n1. 项目截止日期\n2. ~~运动不足~~\n3. 睡眠",
+    "i1": "# 整理思绪的应用\n无限画布 + **思维导图**",
+    "i2": "## 功能\n- 分类\n- Markdown 格式\n- `JSON` 备份",
+    "i3": "```\nroute(a, b)\n```\n绕开方框的直角连线",
+    "s1": "## November\n- [x] 调研\n- [ ] 原型\n- [ ] 根据反馈修改\n\n---\n**11/14** 演示"
+  },
+  "es": {
+    "m1": "# Cómo me siento hoy\nCon **sueño**, pero con ganas.\n*Un nuevo comienzo*",
+    "m2": "## Agradezco\n- Un café caliente\n- Un paseo al atardecer\n- [x] Madrugar",
+    "m3": "> Ir despacio también está bien.\n\nLa frase de hoy",
+    "m4": "### Preocupaciones\n1. Entrega del proyecto\n2. ~~Poco ejercicio~~\n3. Dormir",
+    "i1": "# App para ordenar ideas\nLienzo infinito + **mapa mental**",
+    "i2": "## Funciones\n- Categorías\n- Formato Markdown\n- Copia en `JSON`",
+    "i3": "```\nroute(a, b)\n```\nLíneas en ángulo recto que esquivan las cajas",
+    "s1": "## November\n- [x] Investigación\n- [ ] Prototipo\n- [ ] Aplicar comentarios\n\n---\n**14/11** Demo"
+  }
+}

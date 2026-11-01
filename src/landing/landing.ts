@@ -4,6 +4,11 @@ import { stepDust, type Dust } from './dust';
 
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// ── 하단 언어 링크: 고른 언어를 기억해 다음에 루트(/)로 들어오면 그 언어로 연다 ──
+document.querySelectorAll<HTMLAnchorElement>('a[data-lang]').forEach(a => a.addEventListener('click', () => {
+  try { localStorage.setItem('pixiemap-site-lang', a.dataset.lang || ''); } catch { /* 저장 불가 환경 */ }
+}));
+
 // ── 스크롤하면 천천히 떠오르기 ──────────────────────
 const rise = document.querySelectorAll<HTMLElement>('.rise');
 if (reduce || !('IntersectionObserver' in window)) rise.forEach(el => el.classList.add('on'));

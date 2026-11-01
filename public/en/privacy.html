@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy policy — PixieMap</title>
+<meta name="description" content="What PixieMap, a free lo-fi mind map, stores on your device and on the server, international transfers, retention periods, and how to delete your data.">
+<link rel="canonical" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050509">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.75 system-ui, -apple-system, "Segoe UI", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 6px; letter-spacing: .06em; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); font-size: 13px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  ul { padding-left: 20px; }
+  a { color: #B3ADFF; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; width: 34%; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./" style="text-decoration:none"><i></i>PIXIEMAP</a>
+  <h1>Privacy policy</h1>
+  <p class="meta">PixieMap (https://pixiemap.pages.dev) · Effective 2026-10-31</p>
+  <p class="meta">This is a translation of the <a href="../privacy">Korean original</a>. If they differ, the Korean version prevails.</p>
+
+  <h2>1. By default, everything stays on your device</h2>
+  <p>Unless you turn on sync, PixieMap stores your maps (text boxes, photos, drawings, links, categories) and settings <strong>only in your browser's storage (IndexedDB) on the device you're using</strong>. In that case, nothing is sent to any server.</p>
+  <p>When you log in or link a device that already has its own content, PixieMap asks whether to add it to your account or use your account's content only. Nothing from this device is sent to the server before you choose. If you choose <strong>Use account only</strong>, the previous data on this device (photos included) is kept as a backup <strong>on this device only</strong> (the last 3 are kept) and is not sent to the server.</p>
+
+  <h2>2. If you turn on sync</h2>
+  <p>When you turn on sync in Settings, the following information is stored on a Supabase server (a project created by the operator, in the Tokyo, Japan region) so you can use the same maps on several devices. See section 3 for international transfers.</p>
+  <table>
+    <tr><th>Username and password</th><td>The username and password you choose (Supabase keeps the password only as a hash). Inside the server, the username is stored in the form <code>username@users.synapse.invalid</code>; this is not a real email address.</td></tr>
+    <tr><th>Device keys</th><td>An anonymous user identifier created for each linked device, the device name (typed by you or generated automatically, such as "iPhone Safari"), when it was linked, and when it was last seen</td></tr>
+    <tr><th>Map data</th><td>Categories, boxes (text, position, size), links, pen strokes, edit and delete times, and settings (such as colors)</td></tr>
+    <tr><th>Photos</th><td>Photos you add to boxes (JPEG, resized so the long side is 1200px)</td></tr>
+  </table>
+  <p>To prevent bots (automated sign-ups), PixieMap uses Cloudflare Turnstile (a human check) when you create a username, log in, or link a device. In this process, Cloudflare processes your IP address and browser information (section 3).</p>
+
+  <h2>3. International transfers of personal information</h2>
+  <p>Personal information is transferred abroad as described below only if you turn on sync.</p>
+  <table>
+    <tr><th>Recipient</th><td>Supabase, Inc.<br>Privacy contact: <a href="mailto:privacy@supabase.com">privacy@supabase.com</a> (Supabase's official privacy contact)</td></tr>
+    <tr><th>Country</th><td>Japan (Supabase Tokyo region, ap-northeast-1)</td></tr>
+    <tr><th>Items transferred</th><td>Username, map data (categories, boxes, links, pen strokes, settings), attached photos, device names</td></tr>
+    <tr><th>When and how</th><td>Each time something changes after sync is turned on, over an encrypted connection (HTTPS)</td></tr>
+    <tr><th>Purpose</th><td>Syncing between devices</td></tr>
+    <tr><th>Retention</th><td>Until you delete your account. Deleting the account removes the data from the server immediately.</td></tr>
+    <tr><th>How to refuse, and the effect</th><td>If you don't turn on sync, no international transfer happens and all data stays on your device. Every feature of the app still works without sync; only keeping devices in step is unavailable.</td></tr>
+  </table>
+  <p>To prevent bots (human check), PixieMap uses Cloudflare Turnstile as described below.</p>
+  <table>
+    <tr><th>Recipient</th><td>Cloudflare, Inc.<br>Privacy contact: <a href="mailto:privacyquestions@cloudflare.com">privacyquestions@cloudflare.com</a></td></tr>
+    <tr><th>Country</th><td>The United States and other countries where Cloudflare operates</td></tr>
+    <tr><th>Items transferred</th><td>IP address, browser and device information (for the human check)</td></tr>
+    <tr><th>When and how</th><td>When the human check runs on the create-username, log-in or link-device screens, over an encrypted connection (HTTPS)</td></tr>
+    <tr><th>Purpose</th><td>Preventing bots, such as automated sign-ups and brute-force logins</td></tr>
+    <tr><th>Retention</th><td>As set out in Cloudflare's privacy policy</td></tr>
+    <tr><th>How to refuse, and the effect</th><td>If you don't turn on sync, no human check takes place. In that case, sync can't be used.</td></tr>
+  </table>
+
+  <h2>4. Information we don't collect</h2>
+  <ul>
+    <li>We don't ask for email addresses, phone numbers, names or any other personal information.</li>
+    <li>We don't use advertising or analytics tools, or tracking cookies.</li>
+  </ul>
+
+  <h2>5. Who can access the data</h2>
+  <p>Server data is protected by row-level security (RLS), so only the keys linked to the same vault (your username and the devices you linked) can read and write it. Photo storage is private.</p>
+
+  <h2>6. Retention and deletion</h2>
+  <ul>
+    <li>Records of deleted items (markers used to keep deletions in step across devices) are cleaned up after 30 days.</li>
+    <li>Backups kept on this device when you chose "Use account only" are deleted automatically after 30 days. Before then, you can add them to your account under Settings → Sync → <strong>Restore previous data</strong>. They are also deleted if you choose to erase this device's data when logging out.</li>
+    <li>Settings → Sync → <strong>Log out</strong>: that device's key is deleted and it can no longer access the server. You can choose whether to keep or erase this device's data. <strong>Unlinking</strong> a device from another device's list has the same effect.</li>
+    <li>Settings → Sync → <strong>Delete account</strong>: the vault, the map data and photos on the server, and the username and device keys are <strong>all deleted</strong>. Data on each device stays, and you can delete it in the browser (clear site data).</li>
+  </ul>
+
+  <h2>7. Contact</h2>
+  <p>Privacy questions: <span id="contact">Add the operator's contact details here</span></p>
+
+  <p class="meta" style="margin-top:36px"><a href="./">← PixieMap</a></p>
+  <nav class="langs" aria-label="Language">
+    <a href="../privacy" hreflang="ko" lang="ko">한국어</a>
+    <a href="privacy" hreflang="en" lang="en" aria-current="page">English</a>
+    <a href="../ja/privacy" hreflang="ja" lang="ja">日本語</a>
+    <a href="../zh-hans/privacy" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
+    <a href="../es/privacy" hreflang="es" lang="es">Español</a>
+  </nav>
+</main>
+</body>
+</html>

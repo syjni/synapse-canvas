@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { rgba } from '../lib/color';
@@ -6,6 +6,7 @@ import { type SyncService, type Member, checkId, checkPw, friendly, isRateLimite
 import { CaptchaWidget, TURNSTILE_SITE_KEY } from '../captcha';
 import { listLocalBackups } from '../storage';
 import { alive } from '../model';
+import { t, dual, getLang, subscribeLang, fmtDateTime, fmtAgo, SITE_PATH } from '../i18n';
 
 type View = 'home' | 'enable' | 'login' | 'code' | 'pair' | 'password' | 'rekey' | 'delete' | 'scan' | 'logout';
 type Props = {
@@ -20,6 +21,7 @@ const dash = '1px dashed rgba(217,218,240,.15)';
 
 export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, onWipeLocal, onRestoreBackup }: Props) {
   const [, force] = useState(0);
+  useSyncExternalStore(subscribeLang, getLang);   // 언어를 바꾸면 다시 그린다
   const [view, setView] = useState<View>(initialCode ? 'code' : 'home');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   useEffect(() => { if (connected && view === 'home') loadMembers(); }, [connected, view]);
 
   if (!sync) {
-    return <Section title="SYNC / 동기화" nc={nc}><div style={{ fontSize: 11, color: dim, lineHeight: 1.6 }}>{syncConfigured ? '불러오는 중…' : '동기화 서버가 설정되지 않았습니다. 이 기기에만 저장됩니다. (DEPLOY.md의 Supabase 설정 참고)'}</div></Section>;
+    return <Section title={dual('SYNC', t('head.sync'))} nc={nc}><div style={{ fontSize: 11, color: dim, lineHeight: 1.6 }}>{syncConfigured ? t('sync.loading') : t('sync.notConfigured')}</div></Section>;
   }
 
   const go = (v: View) => { setErr(null); setMsg(null); setF(x => ({ ...x, pw: '', pw2: '', old: '', device: x.device || sync.meta?.deviceName || defaultDeviceName() })); setView(v); };
@@ -82,8 +84,9 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   };
   const lockLeft = Math.max(0, Math.ceil((lockUntil - now) / 1000));
   // 가입·로그인처럼 서버 인증을 쓰는 버튼: 429 뒤에는 남은 초를 보여 주며 잠근다
-  const authBtn = (label: string, onClick: () => void) => btn(lockLeft > 0 ? `${lockLeft}초 뒤 다시 시도할 수 있어요` : label, onClick, 'fill', lockLeft > 0);
+  const authBtn = (label: string, onClick: () => void) => btn(lockLeft > 0 ? t('sync.retryIn', { n: lockLeft }) : label, onClick, 'fill', lockLeft > 0);
   const device = () => (f.device.trim() || defaultDeviceName()).slice(0, 40);
+  const deleteWord = t('sync.deleteWord');   // 계정 삭제 확인에 입력할 낱말 (언어별)
 
   const input = (key: keyof typeof f, label: string, type = 'text', ph = '') => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: dim }}>
@@ -101,7 +104,7 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       border: kind === 'fill' ? 'none' : kind === 'danger' ? '1px solid rgba(255,156,143,.5)' : kind === 'ghost' ? '1px solid rgba(217,218,240,.2)' : `1px solid ${nc}`,
     }}>{label}</button>
   );
-  const back = btn('← 뒤로', () => go('home'), 'ghost');
+  const back = btn(t('sync.back'), () => go('home'), 'ghost');
   const notes = (
     <>
       {needCaptcha && TURNSTILE_SITE_KEY && <div ref={capEl} style={{ minHeight: 0 }} />}
@@ -116,40 +119,40 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
     body = <Scanner nc={nc} onCode={c => { setF(x => ({ ...x, code: c })); setView('code'); }} onCancel={() => setView('code')} />;
   } else if (view === 'enable') {
     body = (<>
-      <P>아이디·비밀번호는 다른 기기를 연결할 때 쓰는 열쇠입니다. 아이디와 비밀번호 말고 다른 개인정보는 받지 않습니다.</P>
-      {input('id', '아이디 (영문 소문자·숫자·_ 4~20자)', 'text', 'my_id')}
-      {input('pw', '비밀번호 (6자 이상)', 'password')}
-      {input('pw2', '비밀번호 확인', 'password')}
-      {input('device', '이 기기 이름')}
+      <P>{t('sync.enableIntro')}</P>
+      {input('id', t('sync.idRule'), 'text', 'my_id')}
+      {input('pw', t('sync.passwordRule'), 'password')}
+      {input('pw2', t('sync.passwordConfirm'), 'password')}
+      {input('device', t('sync.deviceName'))}
       {notes}
-      {authBtn(busy ? '만드는 중…' : '보관함 만들고 동기화 켜기', () => {
-        if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
+      {authBtn(busy ? t('sync.creating') : t('sync.enable'), () => {
+        if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : t('sync.pwMismatch'))) return;
         run(async () => { await sync.enable(f.id, f.pw, device(), captcha); go('home'); });
       })}
       {back}
     </>);
   } else if (view === 'login') {
     body = (<>
-      <P>이미 만든 아이디로 이 기기를 보관함에 연결합니다. 이 기기의 기존 데이터는 덮어쓰지 않고 병합합니다.</P>
-      {input('id', '아이디')}
-      {input('pw', '비밀번호', 'password')}
-      {input('device', '이 기기 이름')}
+      <P>{t('sync.loginIntro')}</P>
+      {input('id', t('sync.id'))}
+      {input('pw', t('sync.password'), 'password')}
+      {input('device', t('sync.deviceName'))}
       {notes}
-      {authBtn(busy ? '연결 중…' : '로그인하고 연결', () => {
-        if (!validate(checkId(f.id), f.pw ? null : '비밀번호를 입력하세요.')) return;
+      {authBtn(busy ? t('sync.connecting') : t('sync.login'), () => {
+        if (!validate(checkId(f.id), f.pw ? null : t('sync.enterPassword'))) return;
         run(async () => { await sync.loginWithId(f.id, f.pw, device(), captcha); go('home'); });
       })}
       {back}
     </>);
   } else if (view === 'code') {
     body = (<>
-      <P>이미 연결된 기기에서 설정 → 동기화 → ‘다른 기기 연결’을 누르면 6자리 코드와 QR이 나옵니다. 이 기기의 기존 데이터는 덮어쓰지 않고 병합합니다.</P>
-      {input('code', '연결 코드 (6자리)', 'text', '000000')}
-      {btn('▣ QR 스캔', () => setView('scan'), 'line')}
-      {input('device', '이 기기 이름')}
+      <P>{t('sync.codeIntro')}</P>
+      {input('code', t('sync.code'), 'text', '000000')}
+      {btn(t('sync.scanQr'), () => setView('scan'), 'line')}
+      {input('device', t('sync.deviceName'))}
       {notes}
-      {authBtn(busy ? '연결 중…' : '연결', () => {
-        const c = parsePair(f.code); if (!validate(c ? null : '6자리 숫자 코드를 입력하세요.')) return;
+      {authBtn(busy ? t('sync.connecting') : t('sync.connect'), () => {
+        const c = parsePair(f.code); if (!validate(c ? null : t('sync.enterCode'))) return;
         run(async () => { await sync.connectWithCode(c!, device(), captcha); go('home'); });
       })}
       {back}
@@ -157,44 +160,44 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   } else if (view === 'pair') {
     const left = pair ? Math.max(0, Math.round((pair.exp - now) / 1000)) : 0;
     body = (<>
-      <P>새 기기에서 ‘다른 기기로 연결’을 누르고 이 코드를 입력하거나 QR을 찍으세요. 5분 동안 한 번만 쓸 수 있습니다.</P>
+      <P>{t('sync.pairIntro')}</P>
       {pair && left > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <div style={{ fontFamily: "'Galmuri11',monospace", fontSize: 30, letterSpacing: '.25em', color: '#EDEEFA', textShadow: `0 0 16px ${rgba(nc, 0.6)}`, userSelect: 'text' }}>{pair.code}</div>
-          <img src={pair.qr} alt="연결 QR" style={{ width: 168, height: 168, imageRendering: 'pixelated', border: `1px solid ${rgba(nc, 0.5)}` }} />
-          <div style={{ fontSize: 11, color: dim }}>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} 남음</div>
+          <img src={pair.qr} alt={t('sync.pairQrAlt')} style={{ width: 168, height: 168, imageRendering: 'pixelated', border: `1px solid ${rgba(nc, 0.5)}` }} />
+          <div style={{ fontSize: 11, color: dim }}>{t('sync.timeLeft', { time: Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') })}</div>
         </div>
-      ) : <div style={{ fontSize: 11, color: dim }}>{pair ? '코드가 만료되었습니다.' : '코드를 만드는 중…'}</div>}
+      ) : <div style={{ fontSize: 11, color: dim }}>{pair ? t('sync.codeExpired') : t('sync.codeMaking')}</div>}
       {notes}
-      {btn('새 코드', () => makePair(), 'line')}
+      {btn(t('sync.newCode'), () => makePair(), 'line')}
       {back}
     </>);
   } else if (view === 'password') {
     const loginId = members?.find(m => m.kind === 'password')?.login_id || '';
     body = (<>
-      <P>아이디 열쇠의 비밀번호를 바꿉니다. 현재 비밀번호가 필요합니다. 잊었다면 ‘열쇠 재발급’을 쓰세요.</P>
-      {input('id', '아이디', 'text', loginId)}
-      {input('old', '현재 비밀번호', 'password')}
-      {input('pw', '새 비밀번호 (6자 이상)', 'password')}
-      {input('pw2', '새 비밀번호 확인', 'password')}
+      <P>{t('sync.passwordIntro')}</P>
+      {input('id', t('sync.id'), 'text', loginId)}
+      {input('old', t('sync.currentPassword'), 'password')}
+      {input('pw', t('sync.newPasswordRule'), 'password')}
+      {input('pw2', t('sync.newPasswordConfirm'), 'password')}
       {notes}
-      {authBtn(busy ? '바꾸는 중…' : '비밀번호 변경', () => {
+      {authBtn(busy ? t('sync.changing') : t('sync.changePassword'), () => {
         const id = f.id || loginId;
-        if (!validate(checkId(id), f.old ? null : '현재 비밀번호를 입력하세요.', checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
-        run(() => sync.changePassword(id, f.old, f.pw, captcha), '비밀번호를 바꿨습니다.');
+        if (!validate(checkId(id), f.old ? null : t('sync.enterCurrent'), checkPw(f.pw), f.pw === f.pw2 ? null : t('sync.pwMismatch'))) return;
+        run(() => sync.changePassword(id, f.old, f.pw, captcha), t('sync.passwordChanged'));
       })}
       {back}
     </>);
   } else if (view === 'rekey') {
     body = (<>
-      <P>비밀번호를 잊었을 때: 새 아이디·비밀번호를 만들어 이 보관함에 등록하고, 이전 아이디 열쇠는 제거합니다. 연결된 기기들은 그대로 유지됩니다.</P>
-      {input('id', '새 아이디')}
-      {input('pw', '새 비밀번호 (6자 이상)', 'password')}
-      {input('pw2', '새 비밀번호 확인', 'password')}
+      <P>{t('sync.rekeyIntro')}</P>
+      {input('id', t('sync.newId'))}
+      {input('pw', t('sync.newPasswordRule'), 'password')}
+      {input('pw2', t('sync.newPasswordConfirm'), 'password')}
       {notes}
-      {authBtn(busy ? '재발급 중…' : '새 열쇠 만들기', () => {
-        if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : '비밀번호 확인이 다릅니다.')) return;
-        run(async () => { await sync.rekey(f.id, f.pw, captcha); await loadMembers(); }, `새 아이디 ‘${f.id}’로 바꿨습니다.`);
+      {authBtn(busy ? t('sync.rekeying') : t('sync.rekey'), () => {
+        if (!validate(checkId(f.id), checkPw(f.pw), f.pw === f.pw2 ? null : t('sync.pwMismatch'))) return;
+        run(async () => { await sync.rekey(f.id, f.pw, captcha); await loadMembers(); }, t('sync.rekeyed', { id: f.id }));
       })}
       {back}
     </>);
@@ -211,46 +214,46 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       </div>
     );
     body = !lo ? (<>
-      <P>대기 중인 변경을 서버에 올리는 중…</P>
+      <P>{t('sync.flushing')}</P>
       {notes}
       {back}
     </>) : (<>
-      {lo.pending > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>아직 서버에 올라가지 않은 변경이 있어요. 지금 로그아웃하면 다른 기기에 반영되지 않아요.</div>}
-      {lo.missingImages > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>서버에서 받지 못한 사진 {lo.missingImages}장은 로그아웃 뒤 이 기기에서 보이지 않아요.</div>}
-      {option(false, '이 기기 데이터 유지 (기본)', '로그아웃 뒤 이 기기에만 저장하며 그대로 계속 씁니다.')}
-      {option(true, '이 기기 데이터도 지우기', '이 기기의 맵·사진·동기화 상태를 지우고 초기 예시 데이터로 돌아갑니다. 서버의 보관함은 그대로입니다.')}
-      <P>이 기기는 보관함의 기기 목록에서 빠집니다. {via === 'code' ? '다시 연결하려면 다른 기기에서 연결 코드를 받아야 해요.' : via === 'id' ? '다시 연결하려면 아이디로 로그인하면 돼요.' : '다시 연결하려면 아이디로 로그인하거나, 다른 기기에서 연결 코드를 받아야 해요.'}</P>
+      {lo.pending > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>{t('sync.pendingWarn')}</div>}
+      {lo.missingImages > 0 && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.6 }}>{t('sync.missingImages', { n: lo.missingImages })}</div>}
+      {option(false, t('sync.keepLocal'), t('sync.keepLocalDesc'))}
+      {option(true, t('sync.wipeLocal'), t('sync.wipeLocalDesc'))}
+      <P>{t('sync.leaveList')} {t(via === 'code' ? 'sync.reconnectCode' : via === 'id' ? 'sync.reconnectId' : 'sync.reconnectAny')}</P>
       {notes}
-      {btn(busy ? '로그아웃 중…' : lo.wipe ? '로그아웃하고 이 기기 데이터 지우기' : '로그아웃', () => {
+      {btn(busy ? t('sync.loggingOut') : lo.wipe ? t('sync.logoutWipe') : t('sync.logout'), () => {
         const wipe = lo.wipe;
         run(async () => {
           const r = await sync.logout();
           if (wipe && onWipeLocal) { await onWipeLocal(); return; }
           go('home');
-          setMsg(r.removed ? '로그아웃했습니다. 이제 이 기기에만 저장합니다.' : '로그아웃했습니다. 서버에 연결되지 않아 기기 목록에는 남아 있을 수 있어요. 다른 기기에서 해제하세요.');
+          setMsg(t(r.removed ? 'sync.loggedOut' : 'sync.loggedOutOffline'));
         });
       }, lo.wipe ? 'danger' : 'fill')}
-      {lo.pending > 0 && btn('다시 올려 보기', () => startLogout(), 'line')}
+      {lo.pending > 0 && btn(t('sync.retryUpload'), () => startLogout(), 'line')}
       {back}
     </>);
   } else if (view === 'delete') {
     body = (<>
-      <P>보관함과 서버의 모든 맵 데이터·사진·열쇠를 지웁니다. 연결된 모든 기기의 동기화가 끊깁니다. 이 기기 안의 데이터는 그대로 남습니다. 되돌릴 수 없습니다.</P>
-      {input('code', '확인을 위해 ‘삭제’를 입력하세요')}
+      <P>{t('sync.deleteIntro')}</P>
+      {input('code', t('sync.deleteConfirm', { word: deleteWord }))}
       {notes}
-      {btn(busy ? '삭제 중…' : '계정 삭제', () => {
-        if (!validate(f.code.trim() === '삭제' ? null : '‘삭제’를 정확히 입력하세요.')) return;
-        run(async () => { await sync.deleteAccount(); go('home'); }, '서버의 데이터를 모두 지웠습니다.');
+      {btn(busy ? t('sync.deleting') : t('sync.deleteAccount'), () => {
+        if (!validate(f.code.trim().toLowerCase() === deleteWord.toLowerCase() ? null : t('sync.deleteMismatch', { word: deleteWord }))) return;
+        run(async () => { await sync.deleteAccount(); go('home'); }, t('sync.deleted'));
       }, 'danger')}
       {back}
     </>);
   } else if (!connected) {
     body = (<>
-      {sync.revokedNotice && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.5 }}>다른 기기에서 이 기기의 연결을 해제해서 로그아웃되었습니다. 이 기기 안의 데이터는 그대로입니다.</div>}
-      <P>동기화를 켜면 맵과 사진이 내 보관함(서버)에 저장되고, 연결한 다른 기기와 맞춰집니다. 꺼 두어도 모든 기능이 그대로 동작합니다.</P>
-      {btn('동기화 켜기 — 새 아이디', () => go('enable'), 'fill')}
-      {btn('다른 기기로 연결 — 코드·QR', () => go('code'))}
-      {btn('아이디로 로그인', () => go('login'))}
+      {sync.revokedNotice && <div style={{ fontSize: 11, color: '#FF9C8F', lineHeight: 1.5 }}>{t('sync.revoked')}</div>}
+      <P>{t('sync.offIntro')}</P>
+      {btn(t('sync.enableNew'), () => go('enable'), 'fill')}
+      {btn(t('sync.connectOther'), () => go('code'))}
+      {btn(t('sync.loginWithId'), () => go('login'))}
       {msg && <div style={{ fontSize: 11, color: nc }}>{msg}</div>}
     </>);
   } else {
@@ -259,45 +262,45 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: st === 'OFFLINE' ? '#FF9C8F' : nc, boxShadow: `0 0 8px ${st === 'OFFLINE' ? '#FF9C8F' : nc}` }} />
         <span style={{ color: st === 'OFFLINE' ? '#FF9C8F' : nc, fontFamily: "'GalmuriMono9',monospace", letterSpacing: '.12em' }}>{st}</span>
-        <span style={{ color: dim }}>{st === 'OFFLINE' ? '— 연결되면 자동으로 올립니다' : st === 'WAITING' ? '— 선택 전이라 올리지 않아요' : '보관함 연결됨'}</span>
+        <span style={{ color: dim }}>{t(st === 'OFFLINE' ? 'sync.offlineNote' : st === 'WAITING' ? 'sync.waitingNote' : 'sync.connected')}</span>
       </div>
       {st === 'WAITING' && (<>
-        <P>이 기기에서 만든 내용을 계정에 추가할지, 계정 내용만 불러올지 골라 주세요.</P>
-        {btn('선택하기', () => sync.reopenJoin(), 'fill')}
+        <P>{t('sync.waitingIntro')}</P>
+        {btn(t('sync.choose'), () => sync.reopenJoin(), 'fill')}
       </>)}
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: dim }}>
-        이 기기 이름
+        {t('sync.deviceName')}
         <input defaultValue={sync.meta?.deviceName} onBlur={e => { const v = e.target.value.trim(); if (v && v !== sync.meta?.deviceName) run(() => sync.renameDevice(v.slice(0, 40))); }}
           style={{ background: '#07080E', border: '1px solid rgba(217,218,240,.2)', color: '#E9EAF7', fontFamily: mono, fontSize: touch ? 16 : 12, padding: '7px 8px', borderRadius: 0, userSelect: 'text', WebkitUserSelect: 'text' }} />
       </label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        {btn('다른 기기 연결', () => { go('pair'); makePair(); }, 'fill')}
-        {btn('지금 동기화', () => { sync.syncNow(); loadMembers(); })}
+        {btn(t('sync.pair'), () => { go('pair'); makePair(); }, 'fill')}
+        {btn(t('sync.syncNow'), () => { sync.syncNow(); loadMembers(); })}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: dash, paddingTop: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: dim }}><span>연결된 열쇠</span><span>{members ? members.length : '…'}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: dim }}><span>{t('sync.keys')}</span><span>{members ? members.length : '…'}</span></div>
         {members?.map(m => (
           <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid rgba(217,218,240,.12)', fontSize: 11 }}>
             <span style={{ width: 6, height: 6, flex: 'none', background: m.kind === 'password' ? 'transparent' : nc, border: m.kind === 'password' ? `1px solid ${nc}` : 'none' }} />
             <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ color: '#E9EAF7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {m.kind === 'password' ? `아이디 열쇠 · ${m.login_id}` : m.device_name || '이름 없는 기기'}{m.user_id === me ? ' (이 기기)' : ''}
+                {m.kind === 'password' ? t('sync.idKey', { id: m.login_id || '' }) : m.device_name || t('sync.unnamedDevice')}{m.user_id === me ? t('sync.thisDevice') : ''}
               </span>
-              <span style={{ color: 'rgba(217,218,240,.45)', fontSize: 10 }}>{m.kind === 'password' ? '새 기기 연결용' : '마지막 접속 ' + ago(m.last_seen_at)}</span>
+              <span style={{ color: 'rgba(217,218,240,.45)', fontSize: 10 }}>{m.kind === 'password' ? t('sync.forNewDevices') : t('sync.lastSeen', { when: fmtAgo(m.last_seen_at) })}</span>
             </span>
             {m.user_id !== me && m.kind === 'device' && (
-              <span onClick={() => { if (window.confirm(`‘${m.device_name}’ 기기의 연결을 해제할까요? 그 기기는 더 이상 서버 데이터에 접근할 수 없습니다.`)) run(async () => { await sync.removeMember(m.user_id); await loadMembers(); }, '연결을 해제했습니다.'); }}
-                style={{ cursor: 'pointer', color: '#FF9C8F', flex: 'none', padding: '2px 4px' }}>해제</span>
+              <span onClick={() => { if (window.confirm(t('sync.removeConfirm', { name: m.device_name || t('sync.unnamedDevice') }))) run(async () => { await sync.removeMember(m.user_id); await loadMembers(); }, t('sync.removed')); }}
+                style={{ cursor: 'pointer', color: '#FF9C8F', flex: 'none', padding: '2px 4px' }}>{t('sync.remove')}</span>
             )}
           </div>
         ))}
       </div>
       {notes}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, borderTop: dash, paddingTop: 12 }}>
-        {btn('비밀번호 변경', () => go('password'), 'ghost')}
-        {btn('열쇠 재발급', () => go('rekey'), 'ghost')}
-        {btn('로그아웃', () => startLogout(), 'ghost')}
-        {btn('계정 삭제', () => { go('delete'); setF(x => ({ ...x, code: '' })); }, 'danger')}
+        {btn(t('sync.changePassword'), () => go('password'), 'ghost')}
+        {btn(t('sync.rekeyBtn'), () => go('rekey'), 'ghost')}
+        {btn(t('sync.logout'), () => startLogout(), 'ghost')}
+        {btn(t('sync.deleteAccount'), () => { go('delete'); setF(x => ({ ...x, code: '' })); }, 'danger')}
       </div>
     </>);
   }
@@ -320,41 +323,28 @@ export default function SyncPanel({ sync, nc, touch, initialCode, onCodeUsed, on
   const restore = (b: BackupRow) => run(async () => {
     const n = await onRestoreBackup!(b.id);
     await loadBackups();
-    setMsg(n ? `${n}개 상자를 추가했어요` : '더할 내용이 없어요');
+    setMsg(n ? t('toast.addedBoxes', { n }) : t('toast.nothingToAdd'));
   });
   const recover = view === 'home' && backups.length > 0 && onRestoreBackup && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: dash, paddingTop: 12 }}>
-      <div style={{ fontSize: 11, color: dim }}>이전 기기 데이터 복구</div>
-      <P>계정 내용만 불러올 때 이 기기에 남긴 백업이에요. 고르면 지금 내용에 추가해요(실행 취소 가능). 30일 뒤 자동으로 지워져요.</P>
+      <div style={{ fontSize: 11, color: dim }}>{t('sync.restoreTitle')}</div>
+      <P>{t('sync.restoreIntro')}</P>
       {backups.map(b => (
         <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid rgba(217,218,240,.12)', fontSize: 11 }}>
-          <span style={{ flex: 1, minWidth: 0, color: '#E9EAF7' }}>{stamp(b.at)}<span style={{ color: 'rgba(217,218,240,.45)' }}> · 상자 {b.boxes}개</span></span>
-          <span onClick={() => { if (!busy) restore(b); }} style={{ cursor: busy ? 'default' : 'pointer', color: nc, flex: 'none', padding: '2px 4px' }}>추가</span>
+          <span style={{ flex: 1, minWidth: 0, color: '#E9EAF7' }}>{fmtDateTime(b.at)}<span style={{ color: 'rgba(217,218,240,.45)' }}> · {t('sync.backupBoxes', { n: b.boxes })}</span></span>
+          <span onClick={() => { if (!busy) restore(b); }} style={{ cursor: busy ? 'default' : 'pointer', color: nc, flex: 'none', padding: '2px 4px' }}>{t('sync.add')}</span>
         </div>
       ))}
     </div>
   );
 
   return (
-    <Section title="SYNC / 동기화" nc={nc}>
+    <Section title={dual('SYNC', t('head.sync'))} nc={nc}>
       {body}
       {recover}
-      <a href={`${import.meta.env.BASE_URL}privacy.html`} target="_blank" rel="noopener" style={{ fontSize: 10, color: 'rgba(217,218,240,.45)', alignSelf: 'flex-start' }}>개인정보처리방침</a>
+      <a href={`${import.meta.env.BASE_URL}${SITE_PATH[getLang()]}privacy.html`} target="_blank" rel="noopener" style={{ fontSize: 10, color: 'rgba(217,218,240,.45)', alignSelf: 'flex-start' }}>{t('sync.privacy')}</a>
     </Section>
   );
-}
-
-const stamp = (t: number) => {
-  const d = new Date(t), z = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
-};
-
-function ago(iso: string) {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 90) return '방금';
-  if (s < 3600) return Math.round(s / 60) + '분 전';
-  if (s < 86400) return Math.round(s / 3600) + '시간 전';
-  return Math.round(s / 86400) + '일 전';
 }
 
 function P({ children }: { children: ReactNode }) { return <div style={{ fontSize: 11, color: dim, lineHeight: 1.6 }}>{children}</div>; }
@@ -389,7 +379,7 @@ function Scanner({ nc, onCode, onCancel }: { nc: string; onCode: (c: string) => 
           const c = r && parsePair(r.data);
           if (c) { live = false; clearInterval(timer); cb.current(c); }
         }, 250);
-      } catch { setErr('카메라를 쓸 수 없습니다. 코드를 직접 입력하세요.'); }
+      } catch { setErr(t('sync.camera')); }
     })();
     return () => { live = false; clearInterval(timer); stream?.getTracks().forEach(t => t.stop()); };
   }, []);
@@ -397,7 +387,7 @@ function Scanner({ nc, onCode, onCancel }: { nc: string; onCode: (c: string) => 
     <>
       <video ref={video} playsInline muted style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', background: '#000', border: `1px solid ${rgba(nc, 0.5)}` }} />
       {err && <div style={{ fontSize: 11, color: '#FF9C8F' }}>{err}</div>}
-      <button onClick={onCancel} style={{ height: 34, background: 'transparent', color: dim, border: '1px solid rgba(217,218,240,.2)', fontFamily: mono, fontSize: 12, cursor: 'pointer' }}>← 코드 입력으로</button>
+      <button onClick={onCancel} style={{ height: 34, background: 'transparent', color: dim, border: '1px solid rgba(217,218,240,.2)', fontFamily: mono, fontSize: 12, cursor: 'pointer' }}>{t('sync.backToCode')}</button>
     </>
   );
 }

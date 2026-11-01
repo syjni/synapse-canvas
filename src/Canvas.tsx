@@ -1,6 +1,6 @@
 import React from 'react';
 import { flushSync } from 'react-dom';
-import { PALETTE, PENS, rgba, colorName } from './lib/color';
+import { PALETTE, PENS, rgba, type Swatch } from './lib/color';
 import { md } from './lib/md';
 import { route, ports, curve, dendrite, smooth, roundPath, type Pt } from './lib/geometry';
 import {
@@ -16,7 +16,8 @@ const SyncPanel = React.lazy(() => import('./ui/SyncPanel'));
 const Licenses = React.lazy(() => import('./ui/Licenses'));
 import { exportBackup, validateBackup, materializeBackup } from './backup';
 import { BoxImage } from './ui/BoxImage';
-import { HELP_DESKTOP, HELP_TOUCH } from './ui/help';
+import { helpGroups } from './ui/help';
+import { t, dual, fmtTime, getLang, setLang, subscribeLang, LANGS, LANG_NAMES } from './i18n';
 import { mouseAction, panDoubleClickable, DoubleClick, type Tool } from './lib/input';
 
 // ── 디자인 상수 (dc.html) ─────────────────────────────
@@ -52,8 +53,10 @@ type State = {
   joinAsk: JoinPlan | null; joinStep: 'ask' | 'confirm'; joinBusy: boolean; joinErr: string | null; toast: string | null;
 };
 
-const hhmm = () => { const t = new Date(); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
+const hhmm = () => fmtTime(new Date());
 const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 0x1100 ? 1 : 0.62; return Math.max(3, w + 0.8) + 'em'; };
+const swatchName = (sw: Swatch) => t('color.' + sw.key);
+const colorName = (hex: string) => { const sw = PENS.find(p => p.hex === hex); return sw ? swatchName(sw) : hex; };
 const mq = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => mq('(display-mode: standalone)') || (navigator as unknown as { standalone?: boolean }).standalone === true;
@@ -142,6 +145,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     }
     const w = wcoApi();
     if (w) w.addEventListener('geometrychange', () => this.setState({ wco: !!w.visible }));
+    // 언어를 바꾸면 화면 전체를 다시 그린다 (빈 상자 안내 문구는 마크다운 캐시에 들어 있어 비운다)
+    this.off.push(subscribeLang(() => { this.mdCache.clear(); this.forceUpdate(); }));
     this.startNoise();
     this.startSync();
     const tryFit = () => { if (window.innerWidth > 0 && !this.userMoved) this.fit(); };
@@ -256,12 +261,12 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (this.state.joinBusy) return;
     this.setState({ joinBusy: true, joinErr: null });
     try { await saveLocalBackup(this.state.data); } catch {
-      this.setState({ joinBusy: false, joinErr: '백업을 만들지 못해서 바꾸지 않았어요. 저장 공간을 확인해 주세요.' });
+      this.setState({ joinBusy: false, joinErr: t('join.backupFailed') });
       return;
     }
     this.setState({ joinAsk: null, joinBusy: false });
     this.sync?.chooseJoin('replace');
-    this.showToast('이 기기 내용은 백업해 두었어요');
+    this.showToast(t('toast.backedUp'));
   }
   // 추가한 카테고리는 전체 보기로 맞추고 짧게 알린다
   afterAdd(r: JoinResult) {
@@ -270,7 +275,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     for (const id of r.touched) { const c = this.state.data.cats.find(x => x.id === id); if (c) views[id] = this.fitView(c); }
     if (r.touched.includes(this.cat.id)) this.userMoved = false;
     this.setState({ views }, () => this.scheduleSave());
-    this.showToast(a.boxes ? `${a.boxes}개 상자를 추가했어요` : '이 기기 내용을 추가했어요');
+    this.showToast(a.boxes ? t('toast.addedBoxes', { n: a.boxes }) : t('toast.addedContent'));
   }
   showToast(msg: string) {
     clearTimeout(this.toastT);
@@ -289,7 +294,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       return { data: x.data, sel: [], editing: null, connectFrom: null } as unknown as State;
     }, res));
     const done = r as JoinResult | null;
-    if (!done) { this.showToast('더할 내용이 없어요'); return 0; }
+    if (!done) { this.showToast(t('toast.nothingToAdd')); return 0; }
     this.afterAdd(done);
     if (done.touched.length && !done.touched.includes(this.cat.id)) this.switchTo(done.touched[0]);
     return done.added.boxes;
@@ -316,7 +321,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     clearTimeout(this.saveT); this.saveT = 0;
     saveAll(this.persisted()).then(
       () => { this.setState({ saveStatus: 'SAVED ' + hhmm(), saveErr: false }); this.sync?.localChanged(); },
-      () => this.setState({ saveStatus: 'STORAGE FULL — 백업 권장', saveErr: true }),
+      () => this.setState({ saveStatus: 'STORAGE FULL', saveErr: true }),
     );
   }
 
@@ -420,15 +425,15 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const id = this.state.sel[0], box = this.cat.boxes.find(b => b.id === id);
     if (!box || box.type !== 'text') return;
     if (this.state.editing !== id) { this.startEdit(id); setTimeout(() => this.fmt(kind), 40); return; }
-    const ta = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]'); const t = box.text || '';
-    const s = ta ? ta.selectionStart : t.length, e = ta ? ta.selectionEnd : t.length;
+    const ta = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]'); const tx = box.text || '';
+    const s = ta ? ta.selectionStart : tx.length, e = ta ? ta.selectionEnd : tx.length;
     const wrap = ({ bold: '**', italic: '*', strike: '~~', code: '`' } as Record<string, string>)[kind];
     let nt: string, cs: number, ce: number;
-    if (wrap) { const mid = t.slice(s, e) || '텍스트'; nt = t.slice(0, s) + wrap + mid + wrap + t.slice(e); cs = s + wrap.length; ce = cs + mid.length; }
+    if (wrap) { const mid = tx.slice(s, e) || t('box.sample'); nt = tx.slice(0, s) + wrap + mid + wrap + tx.slice(e); cs = s + wrap.length; ce = cs + mid.length; }
     else {
       const pre = ({ h1: '# ', h2: '## ', ul: '- ', ol: '1. ', check: '- [ ] ', quote: '> ' } as Record<string, string>)[kind];
-      if (kind === 'hr') { const ins = (t && !t.endsWith('\n') ? '\n' : '') + '---\n'; nt = t.slice(0, e) + ins + t.slice(e); cs = ce = e + ins.length; }
-      else { const ls = t.lastIndexOf('\n', s - 1) + 1; nt = t.slice(0, ls) + pre + t.slice(ls); cs = s + pre.length; ce = e + pre.length; }
+      if (kind === 'hr') { const ins = (tx && !tx.endsWith('\n') ? '\n' : '') + '---\n'; nt = tx.slice(0, e) + ins + tx.slice(e); cs = ce = e + ins.length; }
+      else { const ls = tx.lastIndexOf('\n', s - 1) + 1; nt = tx.slice(0, ls) + pre + tx.slice(ls); cs = s + pre.length; ce = e + pre.length; }
     }
     this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text: nt } : b)) }), false);
     setTimeout(() => { const a = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]'); if (a) { a.focus({ preventScroll: true }); a.setSelectionRange(cs, ce); } }, 0);
@@ -455,18 +460,18 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         this.updCat(cat => ({ ...cat, boxes: [...cat.boxes, box] }));
         ids.push(id);
       } catch {
-        this.setState({ saveStatus: 'STORAGE FULL — 백업 권장', saveErr: true });
+        this.setState({ saveStatus: 'STORAGE FULL', saveErr: true });
       }
     }
     if (ids.length) this.setState({ sel: ids.slice(-1), tool: 'select' });
   }
   doExport() {
-    exportBackup(this.state.data, this.state.prefs, this.state.touchMode).catch(() => window.alert('내보내기에 실패했습니다.'));
+    exportBackup(this.state.data, this.state.prefs, this.state.touchMode).catch(() => window.alert(t('backup.exportFailed')));
   }
   async doImport(file: File) {
     let raw;
-    try { raw = validateBackup(await file.text()); } catch { window.alert('올바른 백업 파일이 아닙니다.'); return; }
-    if (!window.confirm('백업 파일의 내용으로 현재 작업을 교체할까요?')) return;
+    try { raw = validateBackup(await file.text()); } catch { window.alert(t('backup.invalid')); return; }
+    if (!window.confirm(t('backup.confirmReplace'))) return;
     try {
       const { data, prefs } = await materializeBackup(raw);
       this.snapshot();
@@ -475,7 +480,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         this.setPref(prefs);
         this.userMoved = false; setTimeout(() => this.fit(), 0);
       });
-    } catch { window.alert('올바른 백업 파일이 아닙니다.'); }
+    } catch { window.alert(t('backup.invalid')); }
   }
   moveCat(from: string, to: string) {
     if (from === to) return;
@@ -863,9 +868,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     let body: React.ReactNode = null;
     if (b.type === 'text' && !edit) {
       const text = b.text || '';
-      const key = text + '|' + nc;
+      const key = text + '|' + nc + (text.trim() ? '' : '|' + getLang() + s.touchMode);
       let html = this.mdCache.get(key);
-      if (html === undefined) { html = text.trim() ? md(text, nc) : '<span style="opacity:.35">빈 상자 — 더블클릭해서 작성</span>'; if (this.mdCache.size > 300) this.mdCache.clear(); this.mdCache.set(key, html); }
+      if (html === undefined) { html = text.trim() ? md(text, nc) : `<span style="opacity:.35">${t(s.touchMode ? 'box.emptyTouch' : 'box.empty')}</span>`; if (this.mdCache.size > 300) this.mdCache.clear(); this.mdCache.set(key, html); }
       body = <div data-scroll="1" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 12px', fontFamily: "'Galmuri11',monospace", fontSize: 12.5, lineHeight: 1.55, color: '#E3E4F2', textShadow: `0 0 8px ${rgba(nc, 0.6)}`, wordBreak: 'keep-all', overflowWrap: 'anywhere', touchAction: 'none' }} dangerouslySetInnerHTML={{ __html: html }} />;
     }
     const lit = sel || hov;
@@ -894,7 +899,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           </div>
           {edit && b.type === 'text' && (
             <textarea data-edit-ta="1" data-scroll="1" value={b.text || ''} spellCheck={false}
-              placeholder={'# 제목\n- 목록\n**볼드** *기울임*'}
+              placeholder={t('box.placeholder')}
               onChange={e => { const val = e.target.value; this.updCat(cc => ({ ...cc, boxes: cc.boxes.map(x => (x.id === b.id ? { ...x, text: val } : x)) }), false); }}
               onKeyDown={e => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); this.setState({ editing: null }); } }}
               onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
@@ -932,7 +937,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const kbOpen = s.kb > 80;
 
     // 패널 공통
-    const labelOf = (b?: Box) => { if (!b) return '?'; if (b.type === 'image') return 'IMAGE'; const ln = ((b.text || '').split('\n').find(x => x.trim()) || '빈 상자').replace(/^[#>\-*\d.\s[\]x]+/, '').replace(/[*_~`]/g, ''); return ln.slice(0, 22) || '빈 상자'; };
+    const labelOf = (b?: Box) => { if (!b) return '?'; if (b.type === 'image') return 'IMAGE'; const ln = ((b.text || '').split('\n').find(x => x.trim()) || t('box.untitled')).replace(/^[#>\-*\d.\s[\]x]+/, '').replace(/[*_~`]/g, ''); return ln.slice(0, 22) || t('box.untitled'); };
     const byId = Object.fromEntries(boxes.map(b => [b.id, b]));
     const panelLinks = single ? links.filter(l => l.a === single.id || l.b === single.id) : [];
     const pairLinked = selBoxes.length === 2 && links.some(l => (l.a === s.sel[0] && l.b === s.sel[1]) || (l.a === s.sel[1] && l.b === s.sel[0]));
@@ -940,8 +945,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const curHead = selHeads.length === 1 ? selHeads[0] : undefined;
     const setHead = (hex: string | null) => this.updCat(cc => ({ ...cc, boxes: cc.boxes.map(x => (s.sel.includes(x.id) ? { ...x, head: hex } : x)) }));
 
-    const swatches = (list: { name: string; hex: string }[], cur: string | null, pick: (h: string) => void, h = 26, glow = true) => list.map(p => (
-      <button key={p.hex} onClick={() => pick(p.hex)} title={p.name} style={{ height: h, background: p.hex, border: 'none', outline: cur === p.hex ? '1px solid #fff' : '1px solid transparent', outlineOffset: 3, cursor: 'pointer', boxShadow: glow ? `0 0 12px ${rgba(p.hex, cur === p.hex ? 0.6 : 0.12)}` : undefined }} />
+    const swatches = (list: typeof PENS, cur: string | null, pick: (h: string) => void, h = 26, glow = true) => list.map(p => (
+      <button key={p.hex} onClick={() => pick(p.hex)} title={swatchName(p)} style={{ height: h, background: p.hex, border: 'none', outline: cur === p.hex ? '1px solid #fff' : '1px solid transparent', outlineOffset: 3, cursor: 'pointer', boxShadow: glow ? `0 0 12px ${rgba(p.hex, cur === p.hex ? 0.6 : 0.12)}` : undefined }} />
     ));
     const toggle = (onv: boolean) => (
       <div style={{ width: 34, height: 16, border: `1px solid ${nc}`, position: 'relative', background: onv ? rgba(nc, 0.3) : 'transparent', flex: 'none' }}>
@@ -958,40 +963,53 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const settings = s.settingsOpen && (
       <div data-ui="1" onPointerDown={stop} onDoubleClick={stop} style={sheetStyle('left', 300)}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${accentLine}`, letterSpacing: '.16em', fontSize: 11, color: nc }}>
-          <span>SETTINGS / 설정</span><span style={{ cursor: 'pointer', padding: touch ? '4px 8px' : 0 }} onClick={() => this.setState({ settingsOpen: false })}>✕</span>
+          <span>{dual('SETTINGS', t('head.settings'))}</span><span style={{ cursor: 'pointer', padding: touch ? '4px 8px' : 0 }} onClick={() => this.setState({ settingsOpen: false })}>✕</span>
         </div>
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 언어: 이 기기에만 저장. 각 언어는 그 언어 이름으로, 읽지 못하는 언어로 바뀌어도 찾을 수 있게 'Language'를 함께 적는다 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>강조색 1 — 상자</span><span style={{ color: nc }}>{colorName(nc)}</span></div>
+            <div style={{ fontSize: 11 }}>{t('settings.language')}{getLang() === 'en' ? '' : ' · Language'}</div>
+            <div role="radiogroup" aria-label={t('settings.language')} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {LANGS.map(l => {
+                const on = getLang() === l;
+                return (
+                  <button key={l} role="radio" aria-checked={on} lang={l} onClick={() => { if (!on) setLang(l); }}
+                    style={{ height: touch ? 34 : 26, padding: '0 9px', background: on ? nc : 'transparent', color: on ? '#05060B' : '#D9DAF0', border: `1px solid ${on ? nc : 'rgba(217,218,240,.2)'}`, cursor: 'pointer', fontFamily: (l === 'zh-Hans' ? 'FusionPixelZh,' : '') + "'GalmuriMono11',monospace", fontSize: 12 }}>{LANG_NAMES[l]}</button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: dash, paddingTop: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>{t('settings.nodeColor')}</span><span style={{ color: nc }}>{colorName(nc)}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 6 }}>{swatches(PALETTE, nc, hex => this.setPref({ nodeColor: hex }))}</div>
           </div>
           <div onClick={() => this.setPref({ linked: !P.linked })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: dash, borderBottom: dash, cursor: 'pointer' }}>
-            <span>연결선 색을 상자와 동일하게</span>{toggle(P.linked)}
+            <span>{t('settings.linked')}</span>{toggle(P.linked)}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: P.linked ? 0.35 : 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>강조색 2 — 연결선</span><span style={{ color: ec }}>{colorName(ec)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>{t('settings.edgeColor')}</span><span style={{ color: ec }}>{colorName(ec)}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 6 }}>{swatches(PALETTE, P.linked ? null : P.edgeColor, hex => this.setPref({ edgeColor: hex, linked: false }))}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: dash, paddingTop: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>펜 색상</span><span style={{ color: P.penColor }}>{colorName(P.penColor)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>{t('settings.penColor')}</span><span style={{ color: P.penColor }}>{colorName(P.penColor)}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9,1fr)', gap: 6 }}>{swatches(PENS, P.penColor, hex => this.setPref({ penColor: hex }), 22, false)}</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 6 }}><span>펜 굵기</span><span style={{ color: nc }}>{P.penWidth}px</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 6 }}><span>{t('settings.penWidth')}</span><span style={{ color: nc }}>{P.penWidth}px</span></div>
             <input type="range" min={1} max={14} value={P.penWidth} onChange={e => this.setPref({ penWidth: +e.target.value })} style={{ width: '100%', accentColor: nc }} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: dash, paddingTop: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>노이즈 / 그레인</span><span style={{ color: nc }}>{P.grain}%</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>{t('settings.grain')}</span><span style={{ color: nc }}>{P.grain}%</span></div>
             <input type="range" min={0} max={45} value={P.grain} onChange={e => this.setPref({ grain: +e.target.value })} style={{ width: '100%', accentColor: nc }} />
           </div>
           <div onClick={() => this.setPref({ pulse: !P.pulse })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-            <span>신호 펄스 (뉴런 발화)</span>{toggle(P.pulse)}
+            <span>{t('settings.pulse')}</span>{toggle(P.pulse)}
           </div>
           <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} onRestoreBackup={this.restoreBackup} /></React.Suspense>
           <div onClick={() => this.setState({ licensesOpen: true })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: dash, paddingTop: 14, minHeight: 30, fontSize: 11, color: 'rgba(217,218,240,.6)', cursor: 'pointer' }}>
-            <span>오픈소스 라이선스</span><span style={{ color: nc }}>›</span>
+            <span>{t('settings.licenses')}</span><span style={{ color: nc }}>›</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px dashed rgba(255,156,143,.35)', paddingTop: 14 }}>
-            <div style={{ fontSize: 11, letterSpacing: '.16em', color: '#FF9C8F' }}>DANGER / 위험 동작</div>
-            <button onClick={() => this.setState({ clearOpen: true })} style={{ height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>이 카테고리 비우기</button>
+            <div style={{ fontSize: 11, letterSpacing: '.16em', color: '#FF9C8F' }}>{dual('DANGER', t('head.danger'))}</div>
+            <button onClick={() => this.setState({ clearOpen: true })} style={{ height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{t('settings.clear')}</button>
           </div>
         </div>
       </div>
@@ -1001,13 +1019,13 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       <button key={kind} className="hv-fmt" onPointerDown={e => { e.preventDefault(); e.stopPropagation(); this.fmt(kind); }} title={title}
         style={{ height: 30, background: 'transparent', color: '#E9EAF7', border: '1px solid rgba(217,218,240,.2)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12, fontWeight: x.w || 400, fontStyle: x.i ? 'italic' : 'normal', textDecoration: x.s ? 'line-through' : 'none' }}>{label}</button>
     );
-    const editLabel = s.editing && single && s.editing === single.id ? '편집 완료' : '편집 ENTER';
+    const editing1 = !!(s.editing && single && s.editing === single.id);
     const actions = (
       <div style={{ display: 'flex', gap: 6 }}>
         {single && single.type === 'text' && (
-          <button onClick={() => { if (s.editing === single.id) this.setState({ editing: null }); else this.startEdit(single.id); }} style={{ flex: 1, height: 34, background: 'transparent', color: nc, border: `1px solid ${nc}`, cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{touch && editLabel === '편집 ENTER' ? '편집' : editLabel}</button>
+          <button onClick={() => { if (s.editing === single.id) this.setState({ editing: null }); else this.startEdit(single.id); }} style={{ flex: 1, height: 34, background: 'transparent', color: nc, border: `1px solid ${nc}`, cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{editing1 ? t('props.done') : touch ? t('props.edit') : t('props.edit') + ' ENTER'}</button>
         )}
-        <button onClick={() => this.deleteSel()} style={{ flex: 1, height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{touch ? '삭제' : '삭제 DEL'}</button>
+        <button onClick={() => this.deleteSel()} style={{ flex: 1, height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{touch ? t('props.delete') : t('props.delete') + ' DEL'}</button>
       </div>
     );
     const panelTitle = single ? (single.type === 'image' ? 'IMAGE' : 'TEXT') : selBoxes.length + ' SELECTED';
@@ -1027,35 +1045,35 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(217,218,240,.6)' }}><span>헤더 채우기</span><span style={{ color: curHead || 'rgba(217,218,240,.6)' }}>{curHead === undefined ? '혼합' : curHead ? colorName(curHead) : '없음'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(217,218,240,.6)' }}><span>{t('props.headFill')}</span><span style={{ color: curHead || 'rgba(217,218,240,.6)' }}>{curHead === undefined ? t('props.mixed') : curHead ? colorName(curHead) : t('props.none')}</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9,1fr)', gap: 4 }}>
-                {[{ name: '없음', hex: null as string | null }, ...PALETTE].map(p => (
-                  <button key={p.hex || 'none'} onClick={() => setHead(p.hex)} title={p.name} style={{ height: 22, background: p.hex || 'transparent', border: p.hex ? 'none' : '1px dashed rgba(217,218,240,.35)', outline: curHead === p.hex ? '1px solid #fff' : '1px solid transparent', outlineOffset: 2, cursor: 'pointer', color: 'rgba(217,218,240,.6)', fontSize: 10, padding: 0 }}>{p.hex ? '' : '∅'}</button>
+                {[{ key: '', hex: null as string | null }, ...PALETTE].map(p => (
+                  <button key={p.hex || 'none'} onClick={() => setHead(p.hex)} title={p.hex ? t('color.' + p.key) : t('props.none')} style={{ height: 22, background: p.hex || 'transparent', border: p.hex ? 'none' : '1px dashed rgba(217,218,240,.35)', outline: curHead === p.hex ? '1px solid #fff' : '1px solid transparent', outlineOffset: 2, cursor: 'pointer', color: 'rgba(217,218,240,.6)', fontSize: 10, padding: 0 }}>{p.hex ? '' : '∅'}</button>
                 ))}
               </div>
             </div>
             {single && single.type === 'text' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>서식 — Markdown</div>
+                <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t('props.format')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
-                  {[F('B', '볼드', 'bold', { w: 700 }), F('I', '기울임', 'italic', { i: true }), F('S', '취소선', 'strike', { s: true }), F('H1', '제목', 'h1'), F('H2', '소제목', 'h2'),
-                    F('•', '글머리표 목록', 'ul'), F('1.', '번호 목록', 'ol'), F('☐', '체크 항목', 'check'), F('❝', '인용문', 'quote'), F('<>', '인라인 코드', 'code')]}
+                  {[F('B', t('props.bold'), 'bold', { w: 700 }), F('I', t('props.italic'), 'italic', { i: true }), F('S', t('props.strike'), 'strike', { s: true }), F('H1', t('props.h1'), 'h1'), F('H2', t('props.h2'), 'h2'),
+                    F('•', t('props.ul'), 'ul'), F('1.', t('props.ol'), 'ol'), F('☐', t('props.check'), 'check'), F('❝', t('props.quote'), 'quote'), F('<>', t('props.code'), 'code')]}
                 </div>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(217,218,240,.6)' }}><span>연결</span><span>{single ? panelLinks.length + ' LINKS' : ''}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(217,218,240,.6)' }}><span>{t('props.links')}</span><span>{single ? panelLinks.length + ' LINKS' : ''}</span></div>
               {panelLinks.map(l => (
                 <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', border: '1px solid rgba(217,218,240,.12)' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><span style={{ width: 6, height: 6, flex: 'none', background: ec }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{labelOf(byId[l.a === single!.id ? l.b : l.a])}</span></span>
-                  <span onClick={() => this.unlink(l.id)} title="연결 해제" style={{ cursor: 'pointer', color: 'rgba(217,218,240,.5)', flex: 'none', padding: touch ? '2px 6px' : 0 }}>✕</span>
+                  <span onClick={() => this.unlink(l.id)} title={t('props.unlink')} style={{ cursor: 'pointer', color: 'rgba(217,218,240,.5)', flex: 'none', padding: touch ? '2px 6px' : 0 }}>✕</span>
                 </div>
               ))}
               {(single ? panelLinks.length === 0 : selBoxes.length !== 2) && (
-                <div style={{ fontSize: 11, color: 'rgba(217,218,240,.35)' }}>{single ? (touch ? '연결 없음 — LINK 도구 또는 길게 눌러 두 상자 선택' : '연결 없음 — LINK 도구 또는 Shift로 두 상자 선택') : (touch ? '길게 눌러 두 상자를 선택하면 연결할 수 있어요' : 'Shift로 두 상자를 선택하면 연결할 수 있어요')}</div>
+                <div style={{ fontSize: 11, color: 'rgba(217,218,240,.35)' }}>{single ? t(touch ? 'props.noLinksTouch' : 'props.noLinks') : t(touch ? 'props.pairHintTouch' : 'props.pairHint')}</div>
               )}
               {selBoxes.length === 2 && !pairLinked && (
-                <button onClick={() => this.addLink(s.sel[0], s.sel[1])} style={{ height: 34, background: ec, color: '#05060B', border: 'none', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>⟜ 두 상자 연결</button>
+                <button onClick={() => this.addLink(s.sel[0], s.sel[1])} style={{ height: 34, background: ec, color: '#05060B', border: 'none', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>⟜ {t('props.connectPair')}</button>
               )}
             </div>
             {actions}
@@ -1071,20 +1089,21 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       </button>
     );
     const tools = [
-      toolBtn('select', '↖', 'SELECT', '선택 (V)', () => this.setTool('select'), s.tool === 'select' && !s.space),
-      toolBtn('pan', '✥', 'PAN', '화면 이동 (H / Space)', () => this.setTool('pan'), s.tool === 'pan' || s.space),
-      toolBtn('text', 'T', 'TEXT', '글 상자 (T)', () => this.setTool('text'), s.tool === 'text'),
-      toolBtn('img', '▣', 'IMAGE', '사진 첨부 (I)', () => this.fileRef.current?.click(), false),
-      toolBtn('draw', '✎', 'DRAW', '그리기 (P)', () => this.setTool('draw'), s.tool === 'draw'),
-      toolBtn('connect', '⟜', 'LINK', '상자 연결 (C)', () => this.setTool('connect'), s.tool === 'connect'),
-      toolBtn('undo', '↶', 'UNDO', '실행 취소 (Ctrl/⌘+Z)', () => this.undo(), false),
-      toolBtn('set', '⚙', 'SET', '설정', () => this.setState({ settingsOpen: !s.settingsOpen }), s.settingsOpen),
+      toolBtn('select', '↖', 'SELECT', t('tool.select'), () => this.setTool('select'), s.tool === 'select' && !s.space),
+      toolBtn('pan', '✥', 'PAN', t('tool.pan'), () => this.setTool('pan'), s.tool === 'pan' || s.space),
+      toolBtn('text', 'T', 'TEXT', t('tool.text'), () => this.setTool('text'), s.tool === 'text'),
+      toolBtn('img', '▣', 'IMAGE', t('tool.image'), () => this.fileRef.current?.click(), false),
+      toolBtn('draw', '✎', 'DRAW', t('tool.draw'), () => this.setTool('draw'), s.tool === 'draw'),
+      toolBtn('connect', '⟜', 'LINK', t('tool.link'), () => this.setTool('connect'), s.tool === 'connect'),
+      toolBtn('undo', '↶', 'UNDO', t('tool.undo'), () => this.undo(), false),
+      toolBtn('set', '⚙', 'SET', t('tool.settings'), () => this.setState({ settingsOpen: !s.settingsOpen }), s.settingsOpen),
     ];
 
     const navBtn: React.CSSProperties = { padding: mobile ? '10px 12px' : '10px 14px', background: 'transparent', color: '#D9DAF0', border: 'none', borderRight: '1px solid rgba(217,218,240,.12)', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 12 };
-    const helpGroups = touch ? HELP_TOUCH : HELP_DESKTOP;
+    const help = helpGroups(touch);
     const topBtn: React.CSSProperties = { whiteSpace: 'nowrap', flex: 'none', fontFamily: "'GalmuriMono11',monospace", fontSize: 11, letterSpacing: '.08em', padding: '7px 11px', background: 'transparent', color: '#D9DAF0', border: '1px solid rgba(217,218,240,.25)', cursor: 'pointer' };
     const saveColor = s.saveErr ? '#FF9C8F' : ec;
+    const saveText = s.saveStatus === 'STORAGE FULL' ? 'STORAGE FULL — ' + t('save.fullHint') : s.saveStatus;
     const syncColor = s.syncStatus === 'OFFLINE' || s.syncStatus === 'REVOKED' ? '#FF9C8F' : s.syncStatus === 'SYNCING…' || s.syncStatus === 'WAITING' ? 'rgba(217,218,240,.6)' : nc;
 
     return (
@@ -1125,7 +1144,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {/* 상단 바 — Windows 앱(window-controls-overlay)에서는 타이틀바 자리까지 이어진다 */}
         <div data-ui="1" className="topbar" onPointerDown={stop} onDoubleClick={stop} style={{ zoom: K, position: 'absolute', display: 'flex', alignItems: 'center', gap: mobile ? 10 : 18, background: 'transparent' }}>
           <div className="drag" style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11, letterSpacing: '.18em', color: nc, flex: 'none', alignSelf: 'stretch' }}>
-            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>PIXIEMAP<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>생각을 잇는 로파이 마인드맵</span></>}
+            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>PIXIEMAP<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>{t('app.tagline')}</span></>}
           </div>
           <div data-tabs="1" className="nodrag" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', touchAction: 'pan-x' }}>
             {cs.map((t, i) => {
@@ -1161,16 +1180,16 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             })}
           </div>
           <div className="nodrag" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-            <div title={s.saveStatus} style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.12em', color: saveColor, display: 'flex', gap: 6, alignItems: 'center', marginRight: mobile ? 0 : 6, whiteSpace: 'nowrap', flex: 'none' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: saveColor, boxShadow: `0 0 8px ${saveColor}` }} />{mobile && !s.saveErr ? '' : s.saveStatus}
+            <div title={saveText} style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.12em', color: saveColor, display: 'flex', gap: 6, alignItems: 'center', marginRight: mobile ? 0 : 6, whiteSpace: 'nowrap', flex: 'none' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: saveColor, boxShadow: `0 0 8px ${saveColor}` }} />{mobile && !s.saveErr ? '' : saveText}
             </div>
             {s.syncStatus !== 'off' && (
-              <div title="동기화 상태" style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.12em', color: syncColor, display: 'flex', gap: 6, alignItems: 'center', marginRight: mobile ? 0 : 6, whiteSpace: 'nowrap', flex: 'none', cursor: 'pointer' }} onClick={() => this.setState({ settingsOpen: true })}>
+              <div title={t('top.syncStatus')} style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.12em', color: syncColor, display: 'flex', gap: 6, alignItems: 'center', marginRight: mobile ? 0 : 6, whiteSpace: 'nowrap', flex: 'none', cursor: 'pointer' }} onClick={() => this.setState({ settingsOpen: true })}>
                 <span style={{ width: 6, height: 6, background: syncColor, boxShadow: `0 0 8px ${syncColor}` }} />{mobile ? '' : s.syncStatus}
               </div>
             )}
-            <button className="hv-outline" onClick={() => this.doExport()} title="EXPORT — 백업 파일 만들기" style={topBtn}>{mobile ? '↓' : 'EXPORT ↓'}</button>
-            <button className="hv-outline" onClick={() => this.importRef.current?.click()} title="IMPORT — 백업 파일 불러오기" style={topBtn}>{mobile ? '↑' : 'IMPORT ↑'}</button>
+            <button className="hv-outline" onClick={() => this.doExport()} title={'EXPORT — ' + t('top.export')} style={topBtn}>{mobile ? '↓' : 'EXPORT ↓'}</button>
+            <button className="hv-outline" onClick={() => this.importRef.current?.click()} title={'IMPORT — ' + t('top.import')} style={topBtn}>{mobile ? '↑' : 'IMPORT ↑'}</button>
           </div>
         </div>
 
@@ -1191,24 +1210,24 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             <button className="hv-ghost" onClick={() => this.go(-1)} style={navBtn}>{mobile ? '‹' : '‹ PREV'}</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: mobile ? '0 10px' : '0 16px', minWidth: mobile ? 96 : 130, justifyContent: 'center', borderRight: '1px solid rgba(217,218,240,.12)' }}><span style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 9, color: nc }}>{String(idx + 1).padStart(2, '0') + '/' + String(n).padStart(2, '0')}</span><span style={{ color: '#EDEEFA', maxWidth: mobile ? 90 : 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span></div>
             <button className="hv-ghost" onClick={() => this.go(1)} style={navBtn}>{mobile ? '›' : 'NEXT ›'}</button>
-            <button className="hv-ghost" onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z / 1.2)} style={{ ...navBtn, width: 38, padding: 0, borderRight: 'none', fontSize: 15 }}>−</button>
+            <button className="hv-ghost" title={t('nav.zoomOut')} onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z / 1.2)} style={{ ...navBtn, width: 38, padding: 0, borderRight: 'none', fontSize: 15 }}>−</button>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 52, fontFamily: "'GalmuriMono9',monospace", fontSize: 10, color: nc }}>{Math.round(v.z * 100)}%</div>
-            <button className="hv-ghost" onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z * 1.2)} style={{ ...navBtn, width: 38, padding: 0, fontSize: 15 }}>+</button>
-            <button className="hv-ghost" onClick={() => this.fit()} style={navBtn}>{compact ? '⛶' : '⛶ 전체 보기'}</button>
-            <button onClick={() => this.setState({ helpOpen: !s.helpOpen })} style={{ ...navBtn, borderRight: 'none', background: s.helpOpen ? nc : 'transparent', color: s.helpOpen ? '#05060B' : '#D9DAF0' }}>{compact ? '?' : '? 안내'}</button>
+            <button className="hv-ghost" title={t('nav.zoomIn')} onClick={() => this.zoomAt(window.innerWidth / 2, window.innerHeight / 2, v.z * 1.2)} style={{ ...navBtn, width: 38, padding: 0, fontSize: 15 }}>+</button>
+            <button className="hv-ghost" title={t('nav.fit')} onClick={() => this.fit()} style={navBtn}>{compact ? '⛶' : '⛶ ' + t('nav.fit')}</button>
+            <button title={t('nav.help')} onClick={() => this.setState({ helpOpen: !s.helpOpen })} style={{ ...navBtn, borderRight: 'none', background: s.helpOpen ? nc : 'transparent', color: s.helpOpen ? '#05060B' : '#D9DAF0' }}>{compact ? '?' : '? ' + t('nav.help')}</button>
           </div>
         )}
 
         {s.tool === 'connect' && (
           <div style={{ zoom: K, position: 'absolute', left: '50%', top: 'calc(78px + var(--sat))', transform: 'translateX(-50%)', padding: '8px 14px', border: `1px dashed ${ec}`, background: 'rgba(6,7,13,.9)', color: ec, fontSize: 11, letterSpacing: '.08em', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-            {s.connectFrom ? (touch ? '연결할 두 번째 상자를 누르세요' : '연결할 두 번째 상자를 누르세요 · ESC 취소') : 'LINK — 연결할 첫 번째 상자를 누르세요'}
+            {s.connectFrom ? (touch ? t('connect.second') : t('connect.second') + ' · ' + t('connect.escCancel')) : 'LINK — ' + t('connect.first')}
           </div>
         )}
 
         {s.iosHint && (
           <div data-ui="1" onPointerDown={stop} style={{ zoom: K, position: 'absolute', left: '50%', top: 'calc(66px + var(--sat))', transform: 'translateX(-50%)', width: 'min(360px, calc(100vw / 0.85 - 32px))', padding: '12px 14px', border: `1px dashed ${nc}`, background: 'rgba(6,7,13,.95)', boxShadow: `0 0 24px ${glowSoft}`, fontSize: 11, lineHeight: 1.6, display: 'flex', gap: 10, alignItems: 'flex-start', zIndex: 30 }}>
             <span style={{ color: nc, flex: 'none' }}>⬆</span>
-            <span style={{ flex: 1 }}>홈 화면에 추가하면 앱처럼 전체 화면으로 쓸 수 있어요.<br /><span style={{ color: 'rgba(217,218,240,.6)' }}>Safari 하단의 공유 버튼 → ‘홈 화면에 추가’</span></span>
+            <span style={{ flex: 1 }}>{t('ios.hint')}<br /><span style={{ color: 'rgba(217,218,240,.6)' }}>{t('ios.how')}</span></span>
             <span onClick={() => this.dismissIosHint()} style={{ cursor: 'pointer', padding: '0 4px', color: 'rgba(217,218,240,.6)' }}>✕</span>
           </div>
         )}
@@ -1216,9 +1235,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {s.helpOpen && (
           <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ helpOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 40 }}>
             <div onPointerDown={stop} style={{ zoom: K, width: 'min(720px,100%)', maxHeight: '100%', overflow: 'auto', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}`, touchAction: 'pan-y' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc }}><span>{touch ? 'GESTURES / 제스처 안내' : 'MANUAL / 사용 안내'}</span><span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => this.setState({ helpOpen: false })}>✕</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc }}><span>{touch ? dual('GESTURES', t('head.gestures')) : dual('MANUAL', t('head.manual'))}</span><span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => this.setState({ helpOpen: false })}>✕</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 1, background: 'rgba(217,218,240,.1)' }}>
-                {helpGroups.map(gr => (
+                {help.map(gr => (
                   <div key={gr.title} style={{ background: '#07080E', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.16em', color: nc }}>{gr.title}</div>
                     {gr.items.map(it => (
@@ -1227,7 +1246,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
                   </div>
                 ))}
               </div>
-              <div onClick={() => this.setState({ helpOpen: false, licensesOpen: true })} style={{ padding: '10px 16px', fontSize: 10.5, color: 'rgba(217,218,240,.5)', cursor: 'pointer', textAlign: 'right' }}>오픈소스 라이선스 ›</div>
+              <div onClick={() => this.setState({ helpOpen: false, licensesOpen: true })} style={{ padding: '10px 16px', fontSize: 10.5, color: 'rgba(217,218,240,.5)', cursor: 'pointer', textAlign: 'right' }}>{t('settings.licenses')} ›</div>
             </div>
           </div>
         )}
@@ -1241,23 +1260,23 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           );
           return (
             <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ clearOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 42 }}>
-              <div role="dialog" aria-label="이 카테고리 비우기" onPointerDown={stop} style={{ zoom: K, width: 'min(400px,100%)', background: 'rgba(6,7,13,.97)', border: '1px solid rgba(255,156,143,.45)', boxShadow: '0 0 40px rgba(255,156,143,.12)' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,156,143,.3)', fontSize: 11, letterSpacing: '.16em', color: danger }}>CLEAR / 이 카테고리 비우기</div>
+              <div role="dialog" aria-label={t('head.clear')} onPointerDown={stop} style={{ zoom: K, width: 'min(400px,100%)', background: 'rgba(6,7,13,.97)', border: '1px solid rgba(255,156,143,.45)', boxShadow: '0 0 40px rgba(255,156,143,.12)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,156,143,.3)', fontSize: 11, letterSpacing: '.16em', color: danger }}>{dual('CLEAR', t('head.clear'))}</div>
                 <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ fontSize: 13, color: '#EDEEFA' }}>‘{cc.name}’</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: 'rgba(217,218,240,.1)', border: '1px solid rgba(217,218,240,.1)' }}>
-                    {([['상자', nb], ['연결선', nl], ['펜 획', ns]] as const).map(([k, n]) => (
+                    {([[t('clear.boxes'), nb], [t('clear.links'), nl], [t('clear.strokes'), ns]] as const).map(([k, n]) => (
                       <div key={k} style={{ background: '#07080E', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={{ fontSize: 10, color: 'rgba(217,218,240,.55)' }}>{k}</span>
                         <span style={{ fontFamily: "'GalmuriMono11',monospace", fontSize: 16, color: n ? '#EDEEFA' : 'rgba(217,218,240,.35)' }}>{n}</span>
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>카테고리 이름과 탭은 남습니다. 동기화 중이면 다른 기기에서도 지워집니다. 실행 취소(Ctrl/⌘+Z 또는 UNDO)로 한 번에 되돌릴 수 있어요.</div>
+                  <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>{t('clear.note')}</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {cbtn('전부 지우기', () => this.clearCat('all'), 'fill', nb + nl + ns === 0)}
-                    {cbtn('펜 획만 지우기', () => this.clearCat('strokes'), 'line', ns === 0)}
-                    {cbtn('취소', () => this.setState({ clearOpen: false }), 'ghost')}
+                    {cbtn(t('clear.all'), () => this.clearCat('all'), 'fill', nb + nl + ns === 0)}
+                    {cbtn(t('clear.strokesOnly'), () => this.clearCat('strokes'), 'line', ns === 0)}
+                    {cbtn(t('clear.cancel'), () => this.setState({ clearOpen: false }), 'ghost')}
                   </div>
                 </div>
               </div>
@@ -1284,30 +1303,30 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           const label = (t: string) => <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t}</div>;
           return (
             <div data-ui="1" onPointerDown={e => { e.stopPropagation(); if (!s.joinBusy) close(); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 43 }}>
-              <div role="dialog" aria-label="이 기기에서 만든 내용이 있어요" onPointerDown={stop} style={{ zoom: K, width: 'min(420px,100%)', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}` }}>
+              <div role="dialog" aria-label={t('join.title')} onPointerDown={stop} style={{ zoom: K, width: 'min(420px,100%)', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc }}>
-                  <span>이 기기에서 만든 내용이 있어요</span>
+                  <span>{t('join.title')}</span>
                   <span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => { if (!s.joinBusy) close(); }}>✕</span>
                 </div>
                 <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {s.joinStep === 'ask' ? (<>
-                    {label('이 기기에만 있는 것')}
-                    {grid([['카테고리', m.cats], ['상자', m.boxes], ['연결선', m.links], ['펜 획', m.strokes]])}
-                    {m.newer > 0 && <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>이 기기에서 더 최근에 고친 항목 {m.newer}개</div>}
-                    {label('계정에 있는 것')}
-                    {grid([['카테고리', j.account.cats], ['상자', j.account.boxes]])}
-                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>고르기 전까지는 이 기기 내용을 서버에 올리지 않아요. 창을 닫으면 다음에 앱을 열 때 다시 물어요.</div>
+                    {label(t('join.mine'))}
+                    {grid([[t('join.cats'), m.cats], [t('join.boxes'), m.boxes], [t('join.links'), m.links], [t('join.strokes'), m.strokes]])}
+                    {m.newer > 0 && <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t('join.newer', { n: m.newer })}</div>}
+                    {label(t('join.account'))}
+                    {grid([[t('join.cats'), j.account.cats], [t('join.boxes'), j.account.boxes]])}
+                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>{t('join.note')}</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {jbtn('계정에 추가하기 (기본)', () => this.joinAdd(), 'fill', true)}
-                      {jbtn('계정 내용만 불러오기', () => this.setState({ joinStep: 'confirm', joinErr: null }), 'line')}
+                      {jbtn(t('join.add'), () => this.joinAdd(), 'fill', true)}
+                      {jbtn(t('join.replace'), () => this.setState({ joinStep: 'confirm', joinErr: null }), 'line')}
                     </div>
                   </>) : (<>
-                    <div style={{ fontSize: 13, color: '#EDEEFA', lineHeight: 1.6 }}>이 기기에서 만든 내용은 백업해두고 계정 내용으로 바꿔요</div>
-                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>백업은 이 기기에만 저장되고(사진 포함, 최근 3개) 30일 뒤 자동으로 지워져요. 설정 › 동기화 › 이전 기기 데이터 복구에서 계정에 다시 더할 수 있어요.</div>
+                    <div style={{ fontSize: 13, color: '#EDEEFA', lineHeight: 1.6 }}>{t('join.confirm')}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)', lineHeight: 1.6 }}>{t('join.confirmNote')}</div>
                     {s.joinErr && <div style={{ fontSize: 11, color: '#FF9C8F' }}>{s.joinErr}</div>}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {jbtn(s.joinBusy ? '백업하는 중…' : '백업하고 바꾸기', () => this.joinReplace(), 'fill', true)}
-                      {jbtn('뒤로', () => this.setState({ joinStep: 'ask', joinErr: null }), 'ghost')}
+                      {jbtn(s.joinBusy ? t('join.backingUp') : t('join.backupAndReplace'), () => this.joinReplace(), 'fill', true)}
+                      {jbtn(t('join.back'), () => this.setState({ joinStep: 'ask', joinErr: null }), 'ghost')}
                     </div>
                   </>)}
                 </div>
@@ -1323,7 +1342,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {s.licensesOpen && (
           <div data-ui="1" onPointerDown={e => { e.stopPropagation(); this.setState({ licensesOpen: false }); }} onDoubleClick={stop} style={{ position: 'absolute', inset: 0, background: 'rgba(3,3,6,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 41 }}>
             <div onPointerDown={stop} onWheel={e => e.stopPropagation()} style={{ zoom: K, width: 'min(640px,100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column', background: 'rgba(6,7,13,.97)', border: `1px solid ${accentLine}`, boxShadow: `0 0 40px ${glowSoft}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc, flex: 'none' }}><span>LICENSES / 오픈소스 라이선스</span><span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => this.setState({ licensesOpen: false })}>✕</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${accentLine}`, fontSize: 11, letterSpacing: '.16em', color: nc, flex: 'none' }}><span>{dual('LICENSES', t('head.licenses'))}</span><span style={{ cursor: 'pointer', padding: touch ? '0 6px' : 0 }} onClick={() => this.setState({ licensesOpen: false })}>✕</span></div>
               <div data-scroll="1" style={{ overflow: 'auto', minHeight: 0, touchAction: 'pan-y' }}>
                 <React.Suspense fallback={null}><Licenses nc={nc} /></React.Suspense>
               </div>

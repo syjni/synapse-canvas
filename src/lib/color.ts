@@ -8,10 +8,10 @@ export const oklchHex = (L: number, C: number, H: number): string => {
   return '#' + lin.map(v => { v = Math.min(1, Math.max(0, v)); v = v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055; return Math.round(v * 255).toString(16).padStart(2, '0'); }).join('').toUpperCase();
 };
 
-export type Swatch = { name: string; hex: string };
-export const PALETTE: Swatch[] = ([['레드', 22], ['오렌지', 55], ['옐로', 95], ['그린', 150], ['시안', 200], ['블루', 250], ['인디고', 280], ['바이올렛', 315]] as const)
-  .map(([name, h]) => ({ name, hex: oklchHex(0.76, 0.13, h) }));
-export const PENS: Swatch[] = [{ name: '화이트', hex: '#ECECF6' }, ...PALETTE];
+// 색 이름은 언어 파일의 color.<key> (화면에서 t()로 꺼낸다 — 이 파일은 소개 페이지도 쓰므로 사전을 불러오지 않는다)
+export type Swatch = { key: string; hex: string };
+export const PALETTE: Swatch[] = ([['red', 22], ['orange', 55], ['yellow', 95], ['green', 150], ['cyan', 200], ['blue', 250], ['indigo', 280], ['violet', 315]] as const)
+  .map(([key, h]) => ({ key, hex: oklchHex(0.76, 0.13, h) }));
+export const PENS: Swatch[] = [{ key: 'white', hex: '#ECECF6' }, ...PALETTE];
 
 export const rgba = (hex: string, a: number) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
-export const colorName = (hex: string) => (PENS.find(p => p.hex === hex) || { name: hex }).name;

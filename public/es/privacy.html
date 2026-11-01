@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Política de privacidad — PixieMap</title>
+<meta name="description" content="Qué guarda PixieMap, un mapa mental lo-fi gratis, en tu dispositivo y en el servidor, transferencias internacionales, plazos de conservación y cómo borrar tus datos.">
+<link rel="canonical" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="ko" href="https://pixiemap.pages.dev/privacy">
+<link rel="alternate" hreflang="en" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="alternate" hreflang="ja" href="https://pixiemap.pages.dev/ja/privacy">
+<link rel="alternate" hreflang="zh-Hans" href="https://pixiemap.pages.dev/zh-hans/privacy">
+<link rel="alternate" hreflang="es" href="https://pixiemap.pages.dev/es/privacy">
+<link rel="alternate" hreflang="x-default" href="https://pixiemap.pages.dev/en/privacy">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050509">
+<style>
+  :root { --accent: #6DB6FF; --fg: #D9DAF0; --dim: rgba(217,218,240,.6); }
+  html, body { margin: 0; background: #050509; color: var(--fg); }
+  body { font: 15px/1.75 system-ui, -apple-system, "Segoe UI", sans-serif; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; color: #fff; margin: 8px 0 4px; letter-spacing: .02em; }
+  h2 { font-size: 15px; color: var(--accent); margin: 28px 0 6px; letter-spacing: .06em; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); font-size: 13px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; letter-spacing: .18em; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); box-shadow: 0 0 10px var(--accent); display: inline-block; }
+  ul { padding-left: 20px; }
+  a { color: #B3ADFF; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid rgba(217,218,240,.16); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; width: 34%; }
+  .langs { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-top: 10px; }
+  .langs a { color: var(--dim); text-decoration: none; }
+  .langs a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="./" style="text-decoration:none"><i></i>PIXIEMAP</a>
+  <h1>Política de privacidad</h1>
+  <p class="meta">PixieMap (https://pixiemap.pages.dev) · Vigente desde el 2026-10-31</p>
+  <p class="meta">Esta es una traducción del <a href="../privacy">original en coreano</a>. Si hay diferencias, prevalece la versión en coreano.</p>
+
+  <h2>1. Por defecto, todo se queda en tu dispositivo</h2>
+  <p>Si no activas la sincronización, PixieMap guarda tus mapas (cajas de texto, fotos, dibujos, líneas, categorías) y ajustes <strong>solo en el almacenamiento del navegador (IndexedDB) del dispositivo que usas</strong>. En ese caso, no se envía ninguna información a ningún servidor.</p>
+  <p>Al iniciar sesión o vincular un dispositivo que ya tiene contenido propio, PixieMap te pregunta si quieres añadirlo a tu cuenta o usar solo el contenido de la cuenta. No se envía nada de este dispositivo al servidor hasta que elijas. Si eliges <strong>Usar solo la cuenta</strong>, los datos anteriores de este dispositivo (con fotos) se guardan como copia <strong>solo en este dispositivo</strong> (se conservan las 3 últimas) y no se envían al servidor.</p>
+
+  <h2>2. Si activas la sincronización</h2>
+  <p>Al activar la sincronización en Ajustes, se guarda la siguiente información en un servidor de Supabase (un proyecto creado por el responsable, en la región de Tokio, Japón) para que puedas usar los mismos mapas en varios dispositivos. Consulta el apartado 3 sobre las transferencias internacionales.</p>
+  <table>
+    <tr><th>Usuario y contraseña</th><td>El usuario y la contraseña que eliges (Supabase guarda la contraseña solo como hash). Dentro del servidor, el usuario se guarda con la forma <code>usuario@users.synapse.invalid</code>; no es una dirección de correo real.</td></tr>
+    <tr><th>Llaves de dispositivo</th><td>Un identificador de usuario anónimo creado para cada dispositivo vinculado, el nombre del dispositivo (escrito por ti o generado automáticamente, como «iPhone Safari»), la fecha de vinculación y la última conexión</td></tr>
+    <tr><th>Datos de los mapas</th><td>Categorías, cajas (texto, posición, tamaño), líneas, trazos del lápiz, fechas de edición y eliminación, y ajustes (como los colores)</td></tr>
+    <tr><th>Fotos</th><td>Las fotos que añades a las cajas (JPEG reducido a 1200 px en el lado más largo)</td></tr>
+  </table>
+  <p>Para evitar bots (registros automáticos), PixieMap usa Cloudflare Turnstile (una verificación humana) al crear un usuario, iniciar sesión o vincular un dispositivo. En este proceso, Cloudflare trata tu dirección IP y la información del navegador (apartado 3).</p>
+
+  <h2>3. Transferencias internacionales de datos personales</h2>
+  <p>Los datos personales se transfieren al extranjero como se indica abajo solo si activas la sincronización.</p>
+  <table>
+    <tr><th>Destinatario</th><td>Supabase, Inc.<br>Contacto de privacidad: <a href="mailto:privacy@supabase.com">privacy@supabase.com</a> (contacto oficial de Supabase)</td></tr>
+    <tr><th>País</th><td>Japón (región de Tokio de Supabase, ap-northeast-1)</td></tr>
+    <tr><th>Datos transferidos</th><td>Usuario, datos de los mapas (categorías, cajas, líneas, trazos, ajustes), fotos adjuntas y nombres de los dispositivos</td></tr>
+    <tr><th>Cuándo y cómo</th><td>Cada vez que hay un cambio después de activar la sincronización, mediante una conexión cifrada (HTTPS)</td></tr>
+    <tr><th>Finalidad</th><td>Sincronizar entre dispositivos</td></tr>
+    <tr><th>Conservación</th><td>Hasta que elimines la cuenta. Al eliminarla, los datos se borran del servidor de inmediato.</td></tr>
+    <tr><th>Cómo negarte y sus efectos</th><td>Si no activas la sincronización, no hay transferencia internacional y todos los datos se quedan en tu dispositivo. Todas las funciones de la app siguen disponibles sin sincronización; solo no podrás mantener tus dispositivos al día.</td></tr>
+  </table>
+  <p>Para evitar bots (verificación humana), PixieMap usa Cloudflare Turnstile como se indica abajo.</p>
+  <table>
+    <tr><th>Destinatario</th><td>Cloudflare, Inc.<br>Contacto de privacidad: <a href="mailto:privacyquestions@cloudflare.com">privacyquestions@cloudflare.com</a></td></tr>
+    <tr><th>País</th><td>Estados Unidos y otros países donde opera Cloudflare</td></tr>
+    <tr><th>Datos transferidos</th><td>Dirección IP e información del navegador y del dispositivo (para la verificación humana)</td></tr>
+    <tr><th>Cuándo y cómo</th><td>Cuando se hace la verificación humana en las pantallas de crear usuario, iniciar sesión o vincular un dispositivo, mediante una conexión cifrada (HTTPS)</td></tr>
+    <tr><th>Finalidad</th><td>Evitar bots, como registros automáticos o ataques de fuerza bruta al inicio de sesión</td></tr>
+    <tr><th>Conservación</th><td>Según la política de privacidad de Cloudflare</td></tr>
+    <tr><th>Cómo negarte y sus efectos</th><td>Si no activas la sincronización, no se hace ninguna verificación humana. En ese caso, no podrás usar la sincronización.</td></tr>
+  </table>
+
+  <h2>4. Información que no recopilamos</h2>
+  <ul>
+    <li>No pedimos direcciones de correo, números de teléfono, nombres ni ningún otro dato personal.</li>
+    <li>No usamos herramientas de publicidad o analítica, ni cookies de seguimiento.</li>
+  </ul>
+
+  <h2>5. Quién puede acceder</h2>
+  <p>Los datos del servidor están protegidos con seguridad a nivel de fila (RLS), de modo que solo las llaves vinculadas a la misma bóveda (tu usuario y los dispositivos que vinculaste) pueden leerlos y escribirlos. El almacenamiento de fotos es privado.</p>
+
+  <h2>6. Conservación y eliminación</h2>
+  <ul>
+    <li>Los registros de elementos eliminados (marcas para mantener las eliminaciones al día entre dispositivos) se limpian a los 30 días.</li>
+    <li>Las copias que quedan en este dispositivo al elegir «Usar solo la cuenta» se borran automáticamente a los 30 días. Antes de eso, puedes añadirlas a tu cuenta en Ajustes → Sincronización → <strong>Recuperar datos anteriores</strong>. También se borran si, al cerrar sesión, eliges borrar los datos de este dispositivo.</li>
+    <li>Ajustes → Sincronización → <strong>Cerrar sesión</strong>: se borra la llave de ese dispositivo y ya no puede acceder al servidor. Puedes elegir si conservar o borrar los datos de este dispositivo. <strong>Quitar</strong> un dispositivo desde la lista de otro tiene el mismo efecto.</li>
+    <li>Ajustes → Sincronización → <strong>Eliminar cuenta</strong>: se borran <strong>por completo</strong> la bóveda, los datos de los mapas y las fotos del servidor, y las llaves de usuario y de dispositivo. Los datos de cada dispositivo se mantienen y puedes borrarlos desde el navegador (borrar datos del sitio).</li>
+  </ul>
+
+  <h2>7. Contacto</h2>
+  <p>Consultas sobre privacidad: <span id="contact">Escribe aquí los datos de contacto del responsable</span></p>
+
+  <p class="meta" style="margin-top:36px"><a href="./">← PixieMap</a></p>
+  <nav class="langs" aria-label="Idioma">
+    <a href="../privacy" hreflang="ko" lang="ko">한국어</a>
+    <a href="../en/privacy" hreflang="en" lang="en">English</a>
+    <a href="../ja/privacy" hreflang="ja" lang="ja">日本語</a>
+    <a href="../zh-hans/privacy" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
+    <a href="privacy" hreflang="es" lang="es" aria-current="page">Español</a>
+  </nav>
+</main>
+</body>
+</html>
