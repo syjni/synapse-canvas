@@ -47,7 +47,7 @@ type Drag =
 type State = {
   data: Data; prefs: Prefs; prefsT: PrefsT; views: Record<string, View>; active: string;
   tool: Tool; sel: string[]; editing: string | null; hover: string | null; connectFrom: string | null; mouseW: Pt | null;
-  settingsOpen: boolean; helpOpen: boolean; licensesOpen: boolean; clearOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
+  settingsOpen: boolean; langOpen: boolean; helpOpen: boolean; licensesOpen: boolean; clearOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
   swipe: number; liveStroke: [number, number][] | null; space: boolean; flash: { name: string; idx: number } | null; flashOn: boolean;
   panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
@@ -101,7 +101,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     this.state = {
       data: i.data, prefs: i.prefs, prefsT: i.prefsT, views: i.views, active: i.active,
       tool: 'select', sel: [], editing: null, hover: null, connectFrom: null, mouseW: null,
-      settingsOpen: false, helpOpen: false, licensesOpen: false, clearOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
+      settingsOpen: false, langOpen: false, helpOpen: false, licensesOpen: false, clearOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
       swipe: 0, liveStroke: null, space: false, flash: null, flashOn: false, panning: false, dragging: false,
       vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false,
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
@@ -997,18 +997,26 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
           <span>{dual('SETTINGS', t('head.settings'))}</span><span style={{ cursor: 'pointer', padding: touch ? '4px 8px' : 0 }} onClick={() => this.setState({ settingsOpen: false })}>✕</span>
         </div>
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 언어: 이 기기에만 저장. 각 언어는 그 언어 이름으로, 읽지 못하는 언어로 바뀌어도 찾을 수 있게 'Language'를 함께 적는다 */}
+          {/* 언어: 이 기기에만 저장. 지금 언어만 보이고 누르면 펼쳐진다. 각 언어는 그 언어 이름으로,
+              읽지 못하는 언어로 바뀌어도 찾을 수 있게 'Language'를 함께 적는다 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 11 }}>{t('settings.language')}{getLang() === 'en' ? '' : ' · Language'}</div>
-            <div role="radiogroup" aria-label={t('settings.language')} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {LANGS.map(l => {
-                const on = getLang() === l;
-                return (
-                  <button key={l} role="radio" aria-checked={on} lang={l} onClick={() => { if (!on) setLang(l); }}
-                    style={{ height: touch ? 34 : 26, padding: '0 9px', background: on ? nc : 'transparent', color: on ? '#05060B' : '#D9DAF0', border: `1px solid ${on ? nc : 'rgba(217,218,240,.2)'}`, cursor: 'pointer', fontFamily: (l === 'zh-Hans' ? 'FusionPixelZh,' : '') + "'GalmuriMono11',monospace", fontSize: 12 }}>{LANG_NAMES[l]}</button>
-                );
-              })}
+            <div role="button" aria-expanded={s.langOpen} onClick={() => this.setState({ langOpen: !s.langOpen })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, minHeight: touch ? 34 : 22, cursor: 'pointer' }}>
+              <span>{t('settings.language')}{getLang() === 'en' ? '' : ' · Language'}</span>
+              <span lang={getLang()} style={{ color: nc, fontFamily: (getLang() === 'zh-Hans' ? 'FusionPixelZh,' : '') + "'GalmuriMono11',monospace", fontSize: 12 }}>{LANG_NAMES[getLang()]} {s.langOpen ? '▴' : '▾'}</span>
             </div>
+            {s.langOpen && (
+              <div role="radiogroup" aria-label={t('settings.language')} style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(217,218,240,.15)' }}>
+                {LANGS.map(l => {
+                  const on = getLang() === l;
+                  return (
+                    <button key={l} role="radio" aria-checked={on} lang={l} onClick={() => { this.setState({ langOpen: false }); if (!on) setLang(l); }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: touch ? 36 : 28, padding: '0 10px', background: on ? 'rgba(217,218,240,.06)' : 'transparent', color: on ? nc : '#D9DAF0', border: 'none', cursor: 'pointer', fontFamily: (l === 'zh-Hans' ? 'FusionPixelZh,' : '') + "'GalmuriMono11',monospace", fontSize: 12, textAlign: 'left' }}>
+                      <span>{LANG_NAMES[l]}</span>{on && <span>•</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: dash, paddingTop: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>{t('settings.nodeColor')}</span><span style={{ color: nc }}>{colorName(nc)}</span></div>
@@ -1035,9 +1043,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             <span>{t('settings.pulse')}</span>{toggle(P.pulse)}
           </div>
           <React.Suspense fallback={null}><SyncPanel sync={this.sync} nc={nc} touch={touch} initialCode={s.pairCode} onCodeUsed={this.clearPairCode} onWipeLocal={this.wipeLocal} onRestoreBackup={this.restoreBackup} /></React.Suspense>
-          <div onClick={() => this.setState({ licensesOpen: true })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: dash, paddingTop: 14, minHeight: 30, fontSize: 11, color: 'rgba(217,218,240,.6)', cursor: 'pointer' }}>
-            <span>{t('settings.licenses')}</span><span style={{ color: nc }}>›</span>
-          </div>
+          <a href="#" onClick={e => { e.preventDefault(); this.setState({ licensesOpen: true }); }} style={{ fontSize: 10, color: 'rgba(217,218,240,.45)', alignSelf: 'flex-start' }}>{t('settings.licenses')}</a>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px dashed rgba(255,156,143,.35)', paddingTop: 14 }}>
             <div style={{ fontSize: 11, letterSpacing: '.16em', color: '#FF9C8F' }}>{dual('DANGER', t('head.danger'))}</div>
             <button onClick={() => this.setState({ clearOpen: true })} style={{ height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{t('settings.clear')}</button>
