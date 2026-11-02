@@ -38,7 +38,9 @@ export default defineConfig({
         start_url: base + 'app',
         scope: base,
         display: 'standalone',
-        display_override: ['window-controls-overlay', 'standalone'],
+        // window-controls-overlay는 쓰지 않는다: Windows 설치 앱(Edge)이 페이지의 app-region/window-drag를 무시해서
+        // 상단 바를 잡고 창을 끌 수 없었다. 일반 제목줄이 있어야 창을 옮길 수 있다
+        display_override: ['standalone'],
         background_color: '#050509',
         theme_color: '#050509',
         icons: [

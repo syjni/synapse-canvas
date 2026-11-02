@@ -193,7 +193,7 @@ Partner Center의 앱 → **Start your submission**에서:
    - 스크린샷: 설치한 앱을 1920×1080 창에서 캡처(Win+Shift+S)
 6. **Submit to the Store**. 심사는 보통 수 일 걸립니다.
 
-설치된 Windows 앱에서는 상단 바가 타이틀바 자리까지 올라갑니다(Window Controls Overlay). 창 버튼(최소화·닫기) 옆에 펼침 단추(⌃)가 보이면, 그 단추로 일반 타이틀바와 오가며 바꿀 수 있습니다.
+설치된 Windows 앱은 일반 제목줄을 씁니다. 예전에는 상단 바를 타이틀바 자리까지 올렸는데(Window Controls Overlay), 설치 앱(Edge)이 페이지가 정한 끌기 영역(`app-region`·`window-drag`)을 무시해서 창을 잡고 옮길 곳이 거의 없었습니다. 그래서 manifest에서 뺐습니다. 이미 설치한 앱은 Edge가 manifest를 다시 읽을 때(보통 앱을 몇 번 다시 열면) 제목줄이 돌아옵니다.
 
 ## 7. 각 기기에 설치
 
