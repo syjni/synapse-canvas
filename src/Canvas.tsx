@@ -52,6 +52,7 @@ type State = {
   panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
   joinAsk: JoinPlan | null; joinStep: 'ask' | 'confirm'; joinBusy: boolean; joinErr: string | null; toast: string | null;
+  tabsL: boolean; tabsR: boolean; tagHidden: boolean;
 };
 
 const hhmm = () => fmtTime(new Date());
@@ -70,6 +71,10 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   noiseRef = React.createRef<HTMLCanvasElement>();
   fileRef = React.createRef<HTMLInputElement>();
   importRef = React.createRef<HTMLInputElement>();
+  tabsRef = React.createRef<HTMLDivElement>();
+  tagRef = React.createRef<HTMLSpanElement>();
+  tagW = 0;                    // 숨기기 직전 소개 문구 너비 (다시 보일 자리가 생겼는지 판단용)
+  tabShown: string | null = null;   // 마지막으로 탭 줄에서 보이게 맞춘 카테고리
   mdCache = new Map<string, string>();
   routeCache = new Map<string, Pt[] | null>();
   drag: Drag | null = null;
@@ -107,6 +112,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
       syncStatus: 'off', pairCode: null,
       joinAsk: null, joinStep: 'ask', joinBusy: false, joinErr: null, toast: null,
+      tabsL: false, tabsR: false, tagHidden: false,
     };
   }
 
@@ -136,6 +142,10 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     on('blur', () => { if (this.state.space) this.setState({ space: false, swipe: 0 }); });
     on('wheel', e => this.onWheel(e), { passive: false });
     on('resize', () => { this.sizeNoise?.(); this.setState({ vw: window.innerWidth, vh: window.innerHeight }); if (!this.userMoved) this.fit(); });
+    document.fonts?.ready.then(() => this.fitTabs());   // 픽셀 폰트가 늦게 오면 탭 너비가 바뀐다
+    if (this.tabsRef.current && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this.fitTabs()); ro.observe(this.tabsRef.current); this.off.push(() => ro.disconnect());
+    }
     // Safari 페이지 핀치 확대 막기 (캔버스 핀치는 직접 처리)
     const gs = (e: Event) => e.preventDefault();
     document.addEventListener('gesturestart', gs); this.off.push(() => document.removeEventListener('gesturestart', gs));
@@ -207,6 +217,33 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (ta && this.focusEdit) { this.focusEdit = false; ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
     const rn = document.querySelector<HTMLInputElement>('[data-rename]');
     if (rn && this.focusRename) { this.focusRename = false; rn.focus(); rn.select(); }
+    this.fitTabs();
+  }
+
+  // ── 상단 탭 줄: 넘치면 ‹ › 버튼, 지금 카테고리는 항상 보이게 ───────
+  fitTabs() {
+    const el = this.tabsRef.current; if (!el) return;
+    const last = el.lastElementChild as HTMLElement | null;
+    const contentW = last ? last.offsetLeft + last.offsetWidth : 0;
+    const over = el.scrollWidth > el.clientWidth + 1;
+    // 넘치면 소개 문구부터 숨기고, 문구가 다시 들어갈 자리가 넉넉해지면 되살린다 (오가며 깜빡이지 않게 여유를 둔다)
+    if (over && !this.state.tagHidden && this.tagRef.current) { this.tagW = this.tagRef.current.offsetWidth; this.setState({ tagHidden: true }); return; }
+    if (!over && this.state.tagHidden && el.clientWidth - contentW > this.tagW + 40) { this.setState({ tagHidden: false }); return; }
+    const l = over && el.scrollLeft > 1, r = over && el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    if (l !== this.state.tabsL || r !== this.state.tabsR) this.setState({ tabsL: l, tabsR: r });
+    if (this.tabShown !== this.state.active) {
+      this.tabShown = this.state.active;
+      const tab = el.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(this.state.active)}"]`);
+      if (tab && over) {
+        const a = tab.offsetLeft, b = a + tab.offsetWidth, pad = 24;
+        if (a < el.scrollLeft) el.scrollTo({ left: a - pad, behavior: 'smooth' });
+        else if (b > el.scrollLeft + el.clientWidth) el.scrollTo({ left: b - el.clientWidth + pad, behavior: 'smooth' });
+      }
+    }
+  }
+  scrollTabs(dir: number) {
+    const el = this.tabsRef.current; if (!el) return;
+    el.scrollBy({ left: dir * Math.max(120, el.clientWidth * 0.7), behavior: 'smooth' });
   }
   startNoise() {
     const c = this.noiseRef.current; if (!c) return;
@@ -1138,6 +1175,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
 
     const navBtn: React.CSSProperties = { padding: mobile ? '10px 12px' : '10px 14px', background: 'transparent', color: '#D9DAF0', border: 'none', borderRight: '1px solid rgba(217,218,240,.12)', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 12 };
     const help = helpGroups(touch);
+    const tabArrow: React.CSSProperties = { flex: 'none', alignSelf: 'stretch', margin: '9px 0', padding: mobile ? '0 7px' : '0 9px', background: 'transparent', color: '#D9DAF0', border: '1px solid rgba(217,218,240,.16)', fontFamily: "'GalmuriMono11',monospace", fontSize: 13 };
     const topBtn: React.CSSProperties = { whiteSpace: 'nowrap', flex: 'none', fontFamily: "'GalmuriMono11',monospace", fontSize: 11, letterSpacing: '.08em', padding: '7px 11px', background: 'transparent', color: '#D9DAF0', border: '1px solid rgba(217,218,240,.25)', cursor: 'pointer' };
     const saveColor = s.saveErr ? '#FF9C8F' : ec;
     const saveText = s.saveStatus === 'STORAGE FULL' ? 'STORAGE FULL — ' + t('save.fullHint') : s.saveStatus;
@@ -1181,13 +1219,16 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         {/* 상단 바 — Windows 앱(window-controls-overlay)에서는 타이틀바 자리까지 이어진다 */}
         <div data-ui="1" className="topbar" onPointerDown={stop} onDoubleClick={stop} style={{ zoom: K, position: 'absolute', display: 'flex', alignItems: 'center', gap: mobile ? 10 : 18, background: 'transparent' }}>
           <div className="drag" style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11, letterSpacing: '.18em', color: nc, flex: 'none', alignSelf: 'stretch' }}>
-            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>PIXIEMAP<span style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>{t('app.tagline')}</span></>}
+            <span style={{ width: 8, height: 8, background: nc, boxShadow: `0 0 10px ${nc}` }} />{!mobile && <>PIXIEMAP{!s.tagHidden && <span ref={this.tagRef} style={{ fontSize: 10, letterSpacing: '.06em', color: 'rgba(217,218,240,.42)', marginLeft: 3 }}>{t('app.tagline')}</span>}</>}
           </div>
-          <div data-tabs="1" className="nodrag" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', touchAction: 'pan-x' }}>
+          {(s.tabsL || s.tabsR) && <button className="nodrag hv-outline" aria-label="‹" disabled={!s.tabsL} onClick={() => this.scrollTabs(-1)} style={{ ...tabArrow, opacity: s.tabsL ? 1 : 0.3, cursor: s.tabsL ? 'pointer' : 'default' }}>‹</button>}
+          <div ref={this.tabsRef} data-tabs="1" className="nodrag" onScroll={() => this.fitTabs()}
+            onWheel={e => { const el = e.currentTarget; if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 40 : 1); }}
+            style={{ position: 'relative', display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', touchAction: 'pan-x', marginLeft: s.tabsL || s.tabsR ? -(mobile ? 6 : 14) : 0, marginRight: s.tabsL || s.tabsR ? -(mobile ? 6 : 14) : 0 }}>
             {cs.map((t, i) => {
               const on = t.id === c.id, renaming = s.renaming === t.id;
               return (
-                <div key={t.id} draggable={!renaming && !touch}
+                <div key={t.id} data-tab-id={t.id} draggable={!renaming && !touch}
                   onDragStart={e => { this.dragTab = t.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', t.id); } catch { /* 무시 */ } }}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const from = this.dragTab; this.dragTab = null; if (from) this.moveCat(from, t.id); }}
@@ -1216,6 +1257,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
               );
             })}
           </div>
+          {(s.tabsL || s.tabsR) && <button className="nodrag hv-outline" aria-label="›" disabled={!s.tabsR} onClick={() => this.scrollTabs(1)} style={{ ...tabArrow, opacity: s.tabsR ? 1 : 0.3, cursor: s.tabsR ? 'pointer' : 'default' }}>›</button>}
           <div className="nodrag" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
             <div title={saveText} style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 10, letterSpacing: '.12em', color: saveColor, display: 'flex', gap: 6, alignItems: 'center', marginRight: mobile ? 0 : 6, whiteSpace: 'nowrap', flex: 'none' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: saveColor, boxShadow: `0 0 8px ${saveColor}` }} />{mobile && !s.saveErr ? '' : saveText}
