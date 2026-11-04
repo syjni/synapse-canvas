@@ -1,7 +1,7 @@
 import React from 'react';
 import { flushSync } from 'react-dom';
 import { PALETTE, PENS, rgba, type Swatch } from './lib/color';
-import { md } from './lib/md';
+import { md, insertTable, hasTable, tableHeadLabel, tableCell, setTableCell, tableSize, tableOp, fillTable, parseSheet, tableIndexAt, type TableOp } from './lib/md';
 import { route, ports, curve, dendrite, smooth, roundPath, type Pt } from './lib/geometry';
 import {
   type Data, type Category, type Box, type Prefs, type PrefsT, type View, type Persisted,
@@ -16,9 +16,10 @@ const SyncPanel = React.lazy(() => import('./ui/SyncPanel'));
 const Licenses = React.lazy(() => import('./ui/Licenses'));
 import { exportBackup, validateBackup, materializeBackup } from './backup';
 import { BoxImage } from './ui/BoxImage';
+import { TablePicker } from './ui/TablePicker';
 import { helpGroups } from './ui/help';
 import { t, dual, fmtTime, getLang, setLang, subscribeLang, LANGS, LANG_NAMES } from './i18n';
-import { mouseAction, panDoubleClickable, DoubleClick, type Tool } from './lib/input';
+import { mouseAction, panDoubleClickable, DoubleClick, type Tool, type TableSize } from './lib/input';
 import { clampZ, zoomView, wheelPixels, wheelZoomFactor, isWheelNotch, approachZoom, BUTTON_STEP } from './lib/zoom';
 
 // ── 디자인 상수 (dc.html) ─────────────────────────────
@@ -33,6 +34,9 @@ const MOUSE_SWIPE = 120;     // 우클릭 드래그 전환 거리 (진행 바가
 const WHEEL_SWIPE = 260;     // Space + 두 손가락 스와이프 전환 누적값
 const CLICK_SLOP = 3;        // 이보다 적게 움직이면 클릭(선택 해제), 넘으면 화면 이동
 const LONG_PRESS = 480;
+const TABLE_FIT_W = 520;     // 표에 맞춰 자동으로 넓히는 상자 폭의 한도. 더 넓은 표는 가로 스크롤
+const TABLE_BOX_PAD = 34;    // 표 폭에 더할 상자 여백 (본문 안쪽 여백 + 테두리 + 세로 스크롤바)
+const TABLE_FIT_MAX = 600;   // 표를 고친 뒤 자동으로 키우는 상자 높이의 한도. 더 긴 표는 스크롤
 const DOUBLE_TAP = 320;
 
 type Drag =
@@ -42,14 +46,15 @@ type Drag =
   | { type: 'edge'; id: number; sx: number; sy: number; dx?: number; dy?: number }
   | { type: 'move'; id: number; sx: number; sy: number; orig: Record<string, { x: number; y: number }>; pushed?: boolean }
   | { type: 'resize'; id: number; sx: number; sy: number; box: string; ow: number; oh: number; pushed?: boolean }
-  | { type: 'boxTouch'; id: number; sx: number; sy: number; box: string; part: 'body' | 'handle'; consumed?: boolean; scrollEl?: HTMLElement | null; ly?: number };
+  | { type: 'boxTouch'; id: number; sx: number; sy: number; box: string; part: 'body' | 'handle'; consumed?: boolean; scrollEl?: HTMLElement | null; ly?: number; xEl?: HTMLElement | null; lx?: number; cell?: Element | null };
 
 type State = {
   data: Data; prefs: Prefs; prefsT: PrefsT; views: Record<string, View>; active: string;
   tool: Tool; sel: string[]; editing: string | null; hover: string | null; connectFrom: string | null; mouseW: Pt | null;
   settingsOpen: boolean; langOpen: boolean; helpOpen: boolean; licensesOpen: boolean; clearOpen: boolean; renaming: string | null; saveStatus: string; saveErr: boolean;
   swipe: number; liveStroke: [number, number][] | null; space: boolean; flash: { name: string; idx: number } | null; flashOn: boolean;
-  panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean;
+  panning: boolean; dragging: boolean; vw: number; vh: number; kb: number; touchMode: boolean; sheetOpen: boolean; tablePick: boolean; toolTablePick: boolean;
+  cellEdit: { box: string; t: number; r: number; c: number } | null;   // 지금 직접 고치고 있는 표 칸
   iosHint: boolean; wco: boolean; syncStatus: SyncStatus; pairCode: string | null;
   joinAsk: JoinPlan | null; joinStep: 'ask' | 'confirm'; joinBusy: boolean; joinErr: string | null; toast: string | null;
   tabsL: boolean; tabsR: boolean; tagHidden: boolean;
@@ -89,6 +94,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   lastPT = 'mouse';
   userMoved = false;
   focusEdit = false;
+  editStartText = '';   // 편집을 시작할 때의 글 (끝날 때 바뀌었는지 비교)
+  editStartSize: { w: number; h: number } | null = null;   // 편집을 시작할 때의 상자 크기. 편집 중에 직접 크기를 바꾸면 null
+  cellEl: HTMLElement | null = null; cellTd: HTMLElement | null = null; cellSaved = '';   // 직접 고치는 표 칸의 DOM과 원래 내용
   focusRename = false;
   saveT = 0; flashT = 0; toastT = 0; noiseTimer = 0; wT = 0; wAcc = 0; wCool = 0; swipeEndAt = 0;
   // 휠·버튼 확대 애니메이션: 목표 배율과 기준점(커서). 실제 배율은 매 프레임 목표를 따라간다
@@ -108,7 +116,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       tool: 'select', sel: [], editing: null, hover: null, connectFrom: null, mouseW: null,
       settingsOpen: false, langOpen: false, helpOpen: false, licensesOpen: false, clearOpen: false, renaming: null, saveStatus: 'SAVED ' + hhmm(), saveErr: false,
       swipe: 0, liveStroke: null, space: false, flash: null, flashOn: false, panning: false, dragging: false,
-      vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false,
+      vw: window.innerWidth, vh: window.innerHeight, kb: 0, touchMode: mq('(pointer: coarse)'), sheetOpen: false, tablePick: false, toolTablePick: false, cellEdit: null,
       iosHint: isIOS() && !isStandalone() && !hintDismissed, wco: !!wcoApi()?.visible,
       syncStatus: 'off', pairCode: null,
       joinAsk: null, joinStep: 'ask', joinBusy: false, joinErr: null, toast: null,
@@ -129,6 +137,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       window.addEventListener(t, f, o); this.off.push(() => window.removeEventListener(t, f, o));
     };
     on('pointerdown', e => this.onAnyDown(e), { capture: true });
+    const paste = (e: ClipboardEvent) => this.onGlobalPaste(e);
+    window.addEventListener('paste', paste); this.off.push(() => window.removeEventListener('paste', paste));
     on('pointermove', e => this.onMove(e));
     on('pointerup', e => this.onUp(e));
     on('pointercancel', e => this.onUp(e, true));
@@ -212,7 +222,14 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const poll = window.setInterval(check, 60000); this.off.push(() => clearInterval(poll));
   }
   componentWillUnmount() { this.off.forEach(f => f()); clearInterval(this.noiseTimer); this.stopZoomAnim(); this.flushSave(); }
-  componentDidUpdate() {
+  componentDidUpdate(_: unknown, prev: State) {
+    const editing = this.state.editing;
+    if (this.state.tablePick && prev.sel !== this.state.sel && this.state.sel.join() !== prev.sel.join()) this.setState({ tablePick: false });
+    if (prev.editing !== editing) {
+      if (prev.editing) this.fitTableBox(prev.editing);
+      const started = editing ? this.cat.boxes.find(b => b.id === editing) : null;
+      if (started) { this.editStartText = started.text || ''; this.editStartSize = { w: started.w, h: started.h }; }
+    }
     const ta = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]');
     if (ta && this.focusEdit) { this.focusEdit = false; ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
     const rn = document.querySelector<HTMLInputElement>('[data-rename]');
@@ -443,7 +460,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const vv = window.visualViewport; if (!vv) return;
     const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
     if (kb !== this.state.kb) this.setState({ kb });
-    if (kb > 80 && this.state.editing) this.ensureVisible(this.state.editing, vv.offsetTop + vv.height);
+    const editing = this.state.editing || this.state.cellEdit?.box;
+    if (kb > 80 && editing) this.ensureVisible(editing, vv.offsetTop + vv.height);
   }
   ensureVisible(id: string, bottomLimit: number) {
     const b = this.cat.boxes.find(x => x.id === id); if (!b) return;
@@ -465,6 +483,209 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     flushSync(() => this.setState(s => ({ sel: [id], editing: id, tool: keepTool ? s.tool : 'select' })));
   }
   startEdit(id: string) { this.snapshot(); this.focusEdit = true; flushSync(() => this.setState({ editing: id, sel: [id] })); }
+  // 표를 고치고 나면 내용에 맞춰 상자 크기를 다시 정한다. 긴 문장이 낱말마다 꺾이지 않게 폭을 TABLE_FIT_W까지, 표가 잘리지 않게 높이를 TABLE_FIT_MAX까지.
+  // 편집을 시작할 때의 크기보다 작아지지는 않는다. 글이 그대로면(그냥 열어 봤거나 실행 취소), 또는 편집 중에 직접 크기를 바꿨으면 건드리지 않는다.
+  // 스크롤바·글꼴에 흔들리지 않게 표와 본문을 잠깐 제 크기로 풀어 잰다 (화면에 그려지기 전에 되돌린다).
+  fitTableBox(id: string) {
+    const fit = () => {
+      const start = this.editStartSize, b = this.cat.boxes.find(x => x.id === id);
+      if (this.state.editing || !start || !b || (b.text || '') === this.editStartText || !hasTable(b.text || '')) return;
+      const el = document.querySelector<HTMLElement>(`[data-box-body="${id}"]`), outer = el?.parentElement?.parentElement;
+      if (!el || !outer) return;
+      const wanted = Math.max(...[...el.querySelectorAll<HTMLElement>('table')].map(t => { const w = t.style.width; t.style.width = 'max-content'; const n = t.offsetWidth; t.style.width = w; return n; }));
+      const w = Math.max(start.w, Math.min(wanted + TABLE_BOX_PAD, TABLE_FIT_W));
+      const chrome = outer.offsetHeight - el.offsetHeight, ow = outer.style.width, flex = el.style.flex;
+      outer.style.width = w + 'px'; el.style.flex = 'none'; el.style.height = 'auto';
+      const natural = el.offsetHeight;
+      outer.style.width = ow; el.style.flex = flex; el.style.height = '';
+      const h = Math.max(start.h, Math.min(natural + chrome, Math.max(start.h, TABLE_FIT_MAX)));
+      if (w !== b.w || h !== b.h) this.updCat(c => ({ ...c, boxes: c.boxes.map(x => (x.id === id ? { ...x, w, h } : x)) }), false);
+    };
+    fit();
+    // 글꼴이 늦게 도착하면 줄 수가 바뀐다 → 도착한 뒤 다시 잰다
+    setTimeout(() => { document.fonts?.ready.then(fit); }, 50);
+  }
+
+  // ── 표 칸 직접 편집 ──────────────────────────────────
+  // 그려진 칸의 안쪽 div를 contenteditable로 바꿔 그 자리에서 원문을 고친다. 글(text)에는 칸을 떠날 때 쓴다.
+  // React는 html 문자열이 같으면 다시 쓰지 않으므로 편집 중인 DOM이 유지되고, 글이 바뀌면 표 전체를 새로 그린다.
+  setBoxText(id: string, text: string) { flushSync(() => this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text } : b)) }), false)); }
+  boxText(id: string) { return this.cat.boxes.find(b => b.id === id)?.text || ''; }
+  startCellEdit(id: string, cell: Element) {
+    const [t, r, c] = (cell.getAttribute('data-cell') || '').split(':').map(Number);
+    const b = this.cat.boxes.find(x => x.id === id); if (!b) return;
+    this.snapshot();
+    this.editStartText = b.text || ''; this.editStartSize = { w: b.w, h: b.h };
+    flushSync(() => this.setState({ sel: [id], editing: null, tablePick: false }));
+    this.openCell(id, t, r, c, false);
+  }
+  openCell(id: string, t: number, r: number, c: number, selectAll: boolean) {
+    const td = document.querySelector<HTMLElement>(`[data-box-body="${id}"] [data-cell="${t}:${r}:${c}"]`);
+    const el = td?.firstElementChild as HTMLElement | null | undefined;
+    if (!td || !el) { flushSync(() => this.setState({ cellEdit: null })); return; }
+    this.cellSaved = td.innerHTML; this.cellTd = td; this.cellEl = el;
+    el.textContent = tableCell(this.boxText(id), t, r, c);
+    el.contentEditable = 'true';
+    Object.assign(el.style, { userSelect: 'text', webkitUserSelect: 'text', whiteSpace: 'pre-wrap', minWidth: '2em', outline: 'none', cursor: 'text' });
+    td.style.outline = `1px solid ${this.state.prefs.nodeColor}`; td.style.outlineOffset = '-1px';
+    this.setState({ cellEdit: { box: id, t, r, c } });
+    el.focus({ preventScroll: true });
+    const sel = window.getSelection(), range = document.createRange();
+    range.selectNodeContents(el);
+    if (!selectAll) range.collapse(false);
+    sel?.removeAllRanges(); sel?.addRange(range);
+    // 칸이 보이게 표와 상자 안에서만 스크롤한다 (캔버스 전체가 밀리지 않게 scrollIntoView는 쓰지 않는다)
+    const wrap = td.closest<HTMLElement>('[data-xscroll]'), body = td.closest<HTMLElement>('[data-box-body]');
+    if (wrap) {
+      const l = td.offsetLeft, rr = l + td.offsetWidth;
+      if (l < wrap.scrollLeft) wrap.scrollLeft = l; else if (rr > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = rr - wrap.clientWidth;
+    }
+    if (body) {
+      const br = body.getBoundingClientRect(), tr = td.getBoundingClientRect(), k = br.height / (body.offsetHeight || 1) || 1;
+      const top = (tr.top - br.top) / k + body.scrollTop, bottom = top + tr.height / k;
+      if (top < body.scrollTop) body.scrollTop = top; else if (bottom > body.scrollTop + body.clientHeight) body.scrollTop = bottom - body.clientHeight;
+    }
+  }
+  // 고친 글을 표에 쓴다. 바뀌지 않았으면 칸을 원래 모습으로 되돌린다.
+  commitCell() {
+    const el = this.cellEl, td = this.cellTd, ce = this.state.cellEdit;
+    this.cellEl = null; this.cellTd = null;
+    if (!el || !td || !ce || !el.isConnected) return;
+    const text = this.boxText(ce.box), value = (el.textContent || '').trim();
+    if (value !== tableCell(text, ce.t, ce.r, ce.c).trim()) this.setBoxText(ce.box, setTableCell(text, ce.t, ce.r, ce.c, value));
+    if (el.isConnected) { td.innerHTML = this.cellSaved; td.style.outline = ''; td.style.outlineOffset = ''; }
+  }
+  finishCell() {
+    const ce = this.state.cellEdit;
+    this.commitCell();
+    flushSync(() => this.setState({ cellEdit: null }));
+    if (ce) this.fitTableBox(ce.box);
+  }
+  moveCell(r: number, c: number) {
+    const ce = this.state.cellEdit; if (!ce) return;
+    this.commitCell();
+    this.fitTableBox(ce.box);
+    this.openCell(ce.box, ce.t, r, c, true);
+  }
+  // 행·열 추가와 삭제 (편집 중인 칸 기준)
+  cellOp(op: TableOp) {
+    const ce = this.state.cellEdit; if (!ce) return;
+    this.commitCell();
+    const res = tableOp(this.boxText(ce.box), ce.t, op, ce.r, ce.c);
+    this.setBoxText(ce.box, res.text);
+    if (res.r < 0) { flushSync(() => this.setState({ cellEdit: null })); return; }
+    this.fitTableBox(ce.box);
+    this.openCell(ce.box, ce.t, res.r, res.c, true);
+  }
+  onCellKey(e: React.KeyboardEvent) {
+    const ce = this.state.cellEdit; if (!this.cellEl || !ce) return;
+    e.stopPropagation();   // 편집이 끝나면 칸이 새로 그려지므로 창 단위 단축키까지 가지 않게
+    const size = tableSize(this.boxText(ce.box), ce.t); if (!size) return;
+    const { r, c } = ce;
+    if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); this.finishCell(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (r + 1 < size.rows) this.moveCell(r + 1, c); else this.finishCell();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) { if (c > 0) this.moveCell(r, c - 1); else if (r > 0) this.moveCell(r - 1, size.cols - 1); }
+      else if (c + 1 < size.cols) this.moveCell(r, c + 1);
+      else if (r + 1 < size.rows) this.moveCell(r + 1, 0);
+      else {
+        // 마지막 칸에서 Tab: 프레젠테이션 앱처럼 새 줄을 만들고 그 첫 칸으로
+        this.commitCell();
+        const res = tableOp(this.boxText(ce.box), ce.t, 'rowBelow', r, c);
+        this.setBoxText(ce.box, res.text);
+        this.fitTableBox(ce.box);
+        this.openCell(ce.box, ce.t, res.r, 0, true);
+      }
+    } else if (e.key === 'ArrowUp' && r > 0) { e.preventDefault(); this.moveCell(r - 1, c); }
+    else if (e.key === 'ArrowDown' && r + 1 < size.rows) { e.preventDefault(); this.moveCell(r + 1, c); }
+  }
+  onCellBlur() {
+    const el = this.cellEl; if (!el) return;
+    // 다른 칸으로 옮겨 간 경우와 창만 바꾼 경우(포커스는 그대로)는 끝내지 않는다
+    setTimeout(() => { if (this.cellEl === el && document.activeElement !== el) this.finishCell(); }, 0);
+  }
+  onCellPaste(e: React.ClipboardEvent) {
+    const ce = this.state.cellEdit; if (!this.cellEl || !ce) return;
+    e.preventDefault();
+    const plain = e.clipboardData.getData('text/plain');
+    const sheet = parseSheet(plain, /<table/i.test(e.clipboardData.getData('text/html')));
+    if (!sheet) { document.execCommand('insertText', false, plain.replace(/\s*\r?\n\s*/g, ' ')); return; }
+    // 여러 칸을 복사했으면 지금 칸부터 채운다
+    this.commitCell();
+    this.setBoxText(ce.box, fillTable(this.boxText(ce.box), ce.t, ce.r, ce.c, sheet));
+    this.fitTableBox(ce.box);
+    this.openCell(ce.box, ce.t, ce.r, ce.c, true);
+  }
+  // 칸 편집 중에 다른 곳을 눌렀을 때 (창 단위 캡처 단계)
+  onCellPointerDown(e: PointerEvent) {
+    const target = e.target as Element, ce = this.state.cellEdit;
+    if (!ce || this.cellEl?.contains(target) || target.closest?.('[data-table-bar]')) return;
+    const cell = target.closest?.('[data-cell]');
+    if (cell && e.button === 0 && target.closest(`[data-box-body="${ce.box}"]`)) {
+      // 같은 상자의 다른 칸: 바로 옮겨 간다 (같은 상자의 다른 표여도 된다)
+      e.preventDefault();
+      const [t, r, c] = (cell.getAttribute('data-cell') || '').split(':').map(Number);
+      this.commitCell();
+      this.fitTableBox(ce.box);
+      this.openCell(ce.box, t, r, c, false);
+      return;
+    }
+    this.finishCell();
+  }
+  // ▦ 격자에서 고른 크기의 표를 넣고 첫 머리글을 바로 고칠 수 있게 한다
+  insertTableAt(size: TableSize) {
+    const id = this.state.sel[0], box = this.cat.boxes.find(b => b.id === id);
+    if (!box || box.type !== 'text') return;
+    const editing = this.state.editing === id, tx = box.text || '';
+    const ta = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]');
+    if (!editing) { this.snapshot(); this.editStartText = tx; this.editStartSize = { w: box.w, h: box.h }; }
+    const r = insertTable(tx, editing && ta ? ta.selectionEnd : tx.length, size.cols, size.rows);
+    flushSync(() => {
+      this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text: r.text } : b)) }), false);
+      this.setState({ editing: null, tablePick: false });
+    });
+    this.fitTableBox(id);
+    this.openCell(id, tableIndexAt(r.text, r.start), 0, 0, true);
+  }
+  // 원문 편집 칸에 스프레드시트 붙여넣기: 탭 글 대신 표로
+  onEditPaste(e: React.ClipboardEvent<HTMLTextAreaElement>, id: string) {
+    const sheet = parseSheet(e.clipboardData.getData('text/plain'), /<table/i.test(e.clipboardData.getData('text/html')));
+    if (!sheet) return;
+    e.preventDefault();
+    const ta = e.currentTarget, r = insertTable(this.boxText(id), ta.selectionEnd, 0, 0, sheet);
+    this.setBoxText(id, r.text);
+    ta.setSelectionRange(r.start, r.end);
+  }
+  // 아무것도 편집하지 않을 때 스프레드시트 붙여넣기: 화면 가운데에 표 상자를 새로 만든다
+  onGlobalPaste(e: ClipboardEvent) {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || !e.clipboardData) return;
+    const sheet = parseSheet(e.clipboardData.getData('text/plain'), /<table/i.test(e.clipboardData.getData('text/html')));
+    if (!sheet) return;
+    e.preventDefault();
+    this.addTableBox(insertTable('', 0, 0, 0, sheet).text);
+  }
+  // 표만 든 상자를 화면 가운데에 새로 만든다. 이어서 만들어도 겹쳐 가려지지 않게 비켜 놓는다.
+  addTableBox(text: string) {
+    const c = this.toWorld(window.innerWidth / 2, window.innerHeight / 2), id = uid(), live = liveBoxes(this.cat);
+    let x = Math.round(c.x - 110), y = Math.round(c.y - 55);
+    while (live.some(b => b.x === x && b.y === y)) { x += 24; y += 24; }
+    this.editStartText = ''; this.editStartSize = { w: 220, h: 110 };
+    flushSync(() => {
+      this.updCat(cat => ({ ...cat, boxes: [...cat.boxes, { id, type: 'text', x, y, w: 220, h: 110, text, head: null, updatedAt: 0, deletedAt: null }] }));
+      this.setState({ sel: [id], editing: null, tool: 'select', tablePick: false, toolTablePick: false });
+    });
+    this.fitTableBox(id);
+    return id;
+  }
+  // 도구 모음의 TABLE: 고른 크기의 새 표 상자를 만들고 첫 머리글을 바로 고칠 수 있게 한다
+  createTableBox(size: TableSize) {
+    const id = this.addTableBox(insertTable('', 0, size.cols, size.rows).text);
+    this.openCell(id, 0, 0, 0, true);
+  }
   addLink(a: string, b: string) {
     if (a === b) return;
     if (liveLinks(this.cat).some(l => (l.a === a && l.b === b) || (l.a === b && l.b === a))) return;
@@ -496,7 +717,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       if (kind === 'hr') { const ins = (tx && !tx.endsWith('\n') ? '\n' : '') + '---\n'; nt = tx.slice(0, e) + ins + tx.slice(e); cs = ce = e + ins.length; }
       else { const ls = tx.lastIndexOf('\n', s - 1) + 1; nt = tx.slice(0, ls) + pre + tx.slice(ls); cs = s + pre.length; ce = e + pre.length; }
     }
-    this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text: nt } : b)) }), false);
+    // 선택 범위는 새 글이 textarea에 들어간 뒤에 잡아야 하므로 바로 그린다
+    flushSync(() => this.updCat(c => ({ ...c, boxes: c.boxes.map(b => (b.id === id ? { ...b, text: nt } : b)) }), false));
     setTimeout(() => { const a = document.querySelector<HTMLTextAreaElement>('[data-edit-ta]'); if (a) { a.focus({ preventScroll: true }); a.setSelectionRange(cs, ce); } }, 0);
   }
   // 긴 변 1200px로 줄여 JPEG 0.85 Blob으로 기기 저장소에 넣고, 상자에는 imageId만 둔다
@@ -572,6 +794,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   // ── 입력: 포인터 공통 ─────────────────────────────────
   // 캡처 단계에서 모든 포인터를 먼저 본다: 터치 개수 추적(핀치), 펜 감지, 터치/마우스 모드 전환.
   onAnyDown(e: PointerEvent) {
+    if (this.cellEl) this.onCellPointerDown(e);
+    if (this.state.toolTablePick && !(e.target as Element).closest?.('[data-table-tool]')) this.setState({ toolTablePick: false });
     this.lastPT = e.pointerType;
     if (e.pointerType === 'pen') this.penSeen = true;
     const tm = e.pointerType === 'touch' || (e.pointerType === 'pen' && mq('(pointer: coarse)'));
@@ -678,6 +902,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       if (d.consumed) {
         // 내용이 넘치는 상자 본문은 손가락으로 세로 스크롤
         if (d.scrollEl && d.ly != null) { d.scrollEl.scrollTop -= e.clientY - d.ly; d.ly = e.clientY; }
+        // 넓은 표는 손가락으로 가로 스크롤
+        if (d.xEl && d.lx != null) { d.xEl.scrollLeft -= e.clientX - d.lx; d.lx = e.clientX; }
         return;
       }
       if (Math.hypot(dx, dy) < 8) return;
@@ -689,6 +915,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         this.drag = { type: 'move', id: d.id, sx: d.sx, sy: d.sy, orig };
       } else if (d.scrollEl && d.scrollEl.scrollHeight > d.scrollEl.clientHeight + 1 && Math.abs(dy) > Math.abs(dx)) {
         d.consumed = true; d.ly = e.clientY;
+        return;
+      } else if (d.xEl && d.xEl.scrollWidth > d.xEl.clientWidth + 1 && Math.abs(dx) > Math.abs(dy)) {
+        d.consumed = true; d.lx = e.clientX;
         return;
       } else {
         const v = this.view();
@@ -744,7 +973,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       // 탭: 선택, 두 번 탭: 편집 (dc.html 더블클릭과 동일)
       const box = this.cat.boxes.find(b => b.id === d.box);
       if (box) {
-        if (this.isDouble(e, box.id) && box.type === 'text' && this.state.tool === 'select') this.startEdit(box.id);
+        if (this.isDouble(e, box.id) && box.type === 'text' && this.state.tool === 'select') { if (d.cell?.isConnected) this.startCellEdit(box.id, d.cell); else this.startEdit(box.id); }
         else this.boxSelect(box.id, false);
       }
     }
@@ -758,6 +987,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (t.closest && t.closest('[data-ui]')) return;
     const sc = t.closest && t.closest('[data-scroll]');
     if (sc && sc.scrollHeight > sc.clientHeight + 1 && !e.ctrlKey && !e.metaKey && !this.state.space) return;
+    // 넓은 표 위의 가로 스크롤(Shift+휠·트랙패드 좌우)은 표가 받는다
+    const xs = t.closest && t.closest('[data-xscroll]');
+    if (xs && xs.scrollWidth > xs.clientWidth + 1 && (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) && !e.ctrlKey && !e.metaKey && !this.state.space) return;
     e.preventDefault();
     // 줄·페이지 단위(일부 마우스·Firefox)는 픽셀로 환산
     const H = window.innerHeight;
@@ -791,12 +1023,14 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.deleteSel(); return; }
     if (e.key === 'Escape' && (this.drag?.type === 'swipe' || this.wAcc)) { this.drag = null; this.wAcc = 0; this.setState({ swipe: 0 }); return; }
     if (e.key === '[' || e.key === ']') { e.preventDefault(); this.go(e.key === ']' ? 1 : -1); return; }
+    if (e.key === 'Escape' && (this.state.tablePick || this.state.toolTablePick)) { this.setState({ tablePick: false, toolTablePick: false }); return; }
     if (e.key === 'Escape') { this.setState({ sel: [], editing: null, connectFrom: null, helpOpen: false, licensesOpen: false, clearOpen: false, joinAsk: null }); return; }
     if (e.key === 'Enter' && this.state.sel.length === 1) { const b = this.cat.boxes.find(x => x.id === this.state.sel[0]); if (b && b.type === 'text') { e.preventDefault(); this.startEdit(b.id); } return; }
     const map: Record<string, Tool> = { v: 'select', h: 'pan', t: 'text', p: 'draw', c: 'connect' };
     const k = e.key.toLowerCase();
     if (map[k]) this.setTool(map[k]);
     else if (k === 'i') this.fileRef.current?.click();
+    else if (k === 'b') this.setState(s => ({ toolTablePick: !s.toolTablePick, settingsOpen: false }));
   }
   boxSelect(id: string, shift: boolean) {
     const sel = this.state.sel;
@@ -808,6 +1042,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
 
   // 상자 위 포인터: 마우스/펜은 dc.html과 같이 즉시 처리, 터치는 탭·길게 누르기·끌기를 구분
   onBoxDown(e: React.PointerEvent, b: Box, part: 'body' | 'handle') {
+    if ((e.target as HTMLElement).isContentEditable) { e.stopPropagation(); return; }   // 표 칸 안의 커서·글자 선택
     if (this.touchBlocked(e)) return;
     const s = this.state;
     if (e.pointerType !== 'touch') {
@@ -839,7 +1074,8 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     }
     if (s.editing === b.id && part === 'body') return;
     const scrollEl = (e.target as Element).closest<HTMLElement>('[data-scroll]');
-    this.drag = { type: 'boxTouch', id: e.pointerId, sx: e.clientX, sy: e.clientY, box: b.id, part, scrollEl };
+    const xEl = (e.target as Element).closest<HTMLElement>('[data-xscroll]');
+    this.drag = { type: 'boxTouch', id: e.pointerId, sx: e.clientX, sy: e.clientY, box: b.id, part, scrollEl, xEl, cell: (e.target as Element).closest('[data-cell]') };
     clearTimeout(this.longT);
     // 길게 누르기 = 다중 선택 토글 (Shift+클릭과 같음)
     this.longT = window.setTimeout(() => {
@@ -855,6 +1091,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   onResizeDown(e: React.PointerEvent, b: Box) {
     e.stopPropagation();
     if (this.touchBlocked(e)) return;
+    this.editStartSize = null;   // 직접 정한 크기를 자동 맞춤이 덮어쓰지 않게
     if (mouseAction({ part: 'resize', button: e.button, tool: this.state.tool, space: this.state.space }) !== 'resize') { e.preventDefault(); return; }
     e.preventDefault();
     clearTimeout(this.longT);
@@ -932,20 +1169,20 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
   // ── 렌더: 상자 ──────────────────────────────────────
   renderBox(b: Box, i: number, nc: string, ec: string, ze: number) {
     const s = this.state;
-    const sel = s.sel.includes(b.id), hov = s.hover === b.id, edit = s.editing === b.id, from = s.connectFrom === b.id;
+    const sel = s.sel.includes(b.id), hov = s.hover === b.id, edit = s.editing === b.id, from = s.connectFrom === b.id, cellOn = s.cellEdit?.box === b.id;
     let body: React.ReactNode = null;
     if (b.type === 'text' && !edit) {
       const text = b.text || '';
       const key = text + '|' + nc + (text.trim() ? '' : '|' + getLang() + s.touchMode);
       let html = this.mdCache.get(key);
       if (html === undefined) { html = text.trim() ? md(text, nc) : `<span style="opacity:.35">${t(s.touchMode ? 'box.emptyTouch' : 'box.empty')}</span>`; if (this.mdCache.size > 300) this.mdCache.clear(); this.mdCache.set(key, html); }
-      body = <div data-scroll="1" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 12px', fontFamily: "'Galmuri11',monospace", fontSize: 12.5, lineHeight: 1.55, color: '#E3E4F2', textShadow: `0 0 8px ${rgba(nc, 0.6)}`, wordBreak: 'keep-all', overflowWrap: 'anywhere', touchAction: 'none' }} dangerouslySetInnerHTML={{ __html: html }} />;
+      body = <div data-scroll="1" data-box-body={b.id} onKeyDown={e => this.onCellKey(e)} onBlur={() => this.onCellBlur()} onPaste={e => this.onCellPaste(e)} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 12px', fontFamily: "'Galmuri11',monospace", fontSize: 12.5, lineHeight: 1.55, color: '#E3E4F2', textShadow: `0 0 8px ${rgba(nc, 0.6)}`, wordBreak: 'keep-all', overflowWrap: 'anywhere', touchAction: 'none' }} dangerouslySetInnerHTML={{ __html: html }} />;
     }
     const lit = sel || hov;
     let line = lit ? rgba(nc, 0.4) : 'transparent', handleOp = lit || edit ? 1 : 0.45;
     if (b.head) { handleOp = 1; line = b.head; }
     const tag = (b.type === 'image' ? 'IMG-' : 'TXT-') + String(i + 1).padStart(2, '0');
-    const state = edit ? 'EDIT_' : from ? 'LINK…' : sel ? 'SEL' : '';
+    const state = edit || cellOn ? 'EDIT_' : from ? 'LINK…' : sel ? 'SEL' : '';
     const tick6 = sel ? nc : 'transparent';
     // 터치일 때 손잡이·리사이즈 판정 영역을 화면 기준 최소 44px로 (보이는 크기는 그대로)
     const big = s.touchMode;
@@ -958,10 +1195,16 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     return (
       <div key={b.id} style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: lit ? 10 : 2 }}
         onPointerDown={e => this.onBoxDown(e, b, 'body')}
-        onDoubleClick={e => { e.stopPropagation(); if (this.lastPT === 'touch') return; if (b.type === 'text' && s.tool === 'select') this.startEdit(b.id); }}
+        onDoubleClick={e => {
+          e.stopPropagation();
+          if (this.lastPT === 'touch' || (e.target as HTMLElement).isContentEditable) return;
+          if (b.type !== 'text' || s.tool !== 'select') return;
+          const cell = (e.target as Element).closest('[data-cell]');
+          if (cell) this.startCellEdit(b.id, cell); else this.startEdit(b.id);
+        }}
         onPointerEnter={e => { if (e.pointerType !== 'touch' && mq('(hover: hover)')) this.setState({ hover: b.id }); }}
         onPointerLeave={() => this.setState(st => (st.hover === b.id ? { hover: null } as State : null))}>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', transform: `scale(${hov && !s.dragging && !edit ? 1.035 : 1})`, transition: 'transform .2s cubic-bezier(.2,.9,.3,1.3), box-shadow .2s, border-color .2s', background: 'rgba(7,8,14,.86)', border: `1px solid ${rgba(nc, lit ? 1 : 0.5)}`, borderRadius: CORNER === 'soft' ? 6 : 0, boxShadow: lit ? `0 0 20px ${rgba(nc, 0.5)}, 0 0 60px ${rgba(nc, 0.18)}, inset 0 0 14px ${rgba(nc, 0.16)}` : `0 0 12px ${rgba(nc, 0.16)}`, outline: from ? `1px dashed ${ec}` : 'none', outlineOffset: 5, backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', transform: `scale(${hov && !s.dragging && !edit && !cellOn ? 1.035 : 1})`, transition: 'transform .2s cubic-bezier(.2,.9,.3,1.3), box-shadow .2s, border-color .2s', background: 'rgba(7,8,14,.86)', border: `1px solid ${rgba(nc, lit ? 1 : 0.5)}`, borderRadius: CORNER === 'soft' ? 6 : 0, boxShadow: lit ? `0 0 20px ${rgba(nc, 0.5)}, 0 0 60px ${rgba(nc, 0.18)}, inset 0 0 14px ${rgba(nc, 0.16)}` : `0 0 12px ${rgba(nc, 0.16)}`, outline: from ? `1px dashed ${ec}` : 'none', outlineOffset: 5, backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)' }}>
           <div onPointerDown={handleDown} style={{ height: 18, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 8px', cursor: 'move', borderBottom: `1px solid ${line}`, fontFamily: "'GalmuriMono9',monospace", fontSize: 9, letterSpacing: '.12em', color: b.head ? '#05060B' : nc, background: b.head || 'transparent', opacity: handleOp, transition: 'opacity .2s, background .2s' }}>
             <span>{tag}</span><span style={{ letterSpacing: 2, opacity: 0.6 }}>::::</span><span>{state}</span>
           </div>
@@ -969,7 +1212,11 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
             <textarea data-edit-ta="1" data-scroll="1" value={b.text || ''} spellCheck={false}
               placeholder={t('box.placeholder')}
               onChange={e => { const val = e.target.value; this.updCat(cc => ({ ...cc, boxes: cc.boxes.map(x => (x.id === b.id ? { ...x, text: val } : x)) }), false); }}
-              onKeyDown={e => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); this.setState({ editing: null }); } }}
+              onPaste={e => this.onEditPaste(e, b.id)}
+              onKeyDown={e => {
+                if (e.key === 'Escape' && s.tablePick) { e.preventDefault(); this.setState({ tablePick: false }); return; }
+                if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); this.setState({ editing: null }); }
+              }}
               onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
               style={{ flex: 1, minHeight: 0, resize: 'none', background: 'rgba(0,0,0,.35)', border: 'none', padding: '10px 12px', margin: 0, color: '#E9EAF7', fontFamily: "'GalmuriMono11',monospace", fontSize: 12, lineHeight: 1.55, caretColor: nc, userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'pan-y' }} />
           )}
@@ -1005,7 +1252,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     const kbOpen = s.kb > 80;
 
     // 패널 공통
-    const labelOf = (b?: Box) => { if (!b) return '?'; if (b.type === 'image') return 'IMAGE'; const ln = ((b.text || '').split('\n').find(x => x.trim()) || t('box.untitled')).replace(/^[#>\-*\d.\s[\]x]+/, '').replace(/[*_~`]/g, ''); return ln.slice(0, 22) || t('box.untitled'); };
+    const labelOf = (b?: Box) => { if (!b) return '?'; if (b.type === 'image') return 'IMAGE'; const th = tableHeadLabel(b.text || ''); if (th !== null) return th.replace(/[*_~`]/g, '').slice(0, 22) || t('box.untitled'); const ln =((b.text || '').split('\n').find(x => x.trim()) || t('box.untitled')).replace(/^[#>\-*\d.\s[\]x]+/, '').replace(/[*_~`]/g, ''); return ln.slice(0, 22) || t('box.untitled'); };
     const byId = Object.fromEntries(boxes.map(b => [b.id, b]));
     const panelLinks = single ? links.filter(l => l.a === single.id || l.b === single.id) : [];
     const pairLinked = selBoxes.length === 2 && links.some(l => (l.a === s.sel[0] && l.b === s.sel[1]) || (l.a === s.sel[1] && l.b === s.sel[0]));
@@ -1090,8 +1337,13 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     );
 
     const F = (label: string, title: string, kind: string, x: { w?: number; i?: boolean; s?: boolean } = {}) => (
-      <button key={kind} className="hv-fmt" onPointerDown={e => { e.preventDefault(); e.stopPropagation(); this.fmt(kind); }} title={title}
-        style={{ height: 30, background: 'transparent', color: '#E9EAF7', border: '1px solid rgba(217,218,240,.2)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12, fontWeight: x.w || 400, fontStyle: x.i ? 'italic' : 'normal', textDecoration: x.s ? 'line-through' : 'none' }}>{label}</button>
+      <button key={kind} className="hv-fmt" onPointerDown={e => {
+        e.preventDefault(); e.stopPropagation();
+        if (kind === 'table') { this.setState({ tablePick: !s.tablePick }); return; }
+        if (s.tablePick) this.setState({ tablePick: false });
+        this.fmt(kind);
+      }} title={title}
+        style={{ height: 30, background: 'transparent', color: kind === 'table' && s.tablePick ? nc : '#E9EAF7', border: `1px solid ${kind === 'table' && s.tablePick ? nc : 'rgba(217,218,240,.2)'}`, cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12, fontWeight: x.w || 400, fontStyle: x.i ? 'italic' : 'normal', textDecoration: x.s ? 'line-through' : 'none' }}>{label}</button>
     );
     const editing1 = !!(s.editing && single && s.editing === single.id);
     const actions = (
@@ -1102,15 +1354,41 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         <button onClick={() => this.deleteSel()} style={{ flex: 1, height: 34, background: 'transparent', color: '#FF9C8F', border: '1px solid rgba(255,156,143,.5)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 12 }}>{touch ? t('props.delete') : t('props.delete') + ' DEL'}</button>
       </div>
     );
+    // 표 도구: 칸을 직접 고치는 동안. 눌러도 칸의 포커스를 뺏지 않는다
+    const TB = (op: TableOp, compact: boolean) => (
+      <button key={op} className="hv-fmt" title={t('props.' + op)} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); this.cellOp(op); }}
+        style={{ height: 30, flex: compact ? 'none' : undefined, padding: '0 8px', gridColumn: !compact && op === 'tableDel' ? '1 / -1' : undefined, whiteSpace: 'nowrap', background: 'transparent', color: op.endsWith('Del') ? '#FF9C8F' : '#E9EAF7', border: `1px solid ${op.endsWith('Del') ? 'rgba(255,156,143,.5)' : 'rgba(217,218,240,.2)'}`, cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", fontSize: 11 }}>{t('props.' + op)}</button>
+    );
+    const TABLE_OPS: TableOp[] = ['rowAbove', 'rowBelow', 'colLeft', 'colRight', 'rowDel', 'colDel', 'tableDel'];
+    const tableBar = s.cellEdit && single && s.cellEdit.box === single.id && (
+      <div data-table-bar="1" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t('props.table')}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4 }}>{TABLE_OPS.map(op => TB(op, false))}</div>
+      </div>
+    );
+    // 휴대폰에서 화면 키보드가 떠 있으면 속성 패널이 숨으므로 키보드 바로 위에 한 줄로
+    const tableBarKb = mobile && kbOpen && s.cellEdit && (
+      <div data-ui="1" data-table-bar="1" onPointerDown={stop} style={{ zoom: K, position: 'absolute', left: 0, right: 0, bottom: s.kb / K, display: 'flex', gap: 4, padding: 6, overflowX: 'auto', background: 'rgba(6,7,13,.97)', borderTop: `1px solid ${accentLine}`, zIndex: 22, touchAction: 'pan-x' }}>
+        {TABLE_OPS.map(op => TB(op, true))}
+      </div>
+    );
     const panelTitle = single ? (single.type === 'image' ? 'IMAGE' : 'TEXT') : selBoxes.length + ' SELECTED';
     const sheetCollapsed = mobile && !s.sheetOpen;
-    const properties = selBoxes.length > 0 && !(mobile && (s.settingsOpen || kbOpen)) && (
+    // 도구 모음의 TABLE: 어느 상자에도 속하지 않는 새 표. 크기 격자는 설정 패널과 같은 자리에 연다
+    const tableToolPanel = s.toolTablePick && (
+      <div data-ui="1" data-table-tool="1" onPointerDown={stop} onDoubleClick={stop} style={sheetStyle('left', 230)}>
+        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${accentLine}`, letterSpacing: '.16em', fontSize: 11, color: nc }}>TABLE</div>
+        <div style={{ padding: 14 }}><TablePicker color={nc} label={t('props.table')} touch={touch} onPick={size => this.createTableBox(size)} /></div>
+      </div>
+    );
+    const properties = selBoxes.length > 0 && !(mobile && (s.settingsOpen || kbOpen || s.toolTablePick)) && (
       <div data-ui="1" onPointerDown={stop} onDoubleClick={stop} style={sheetStyle('right', 260)}>
         <div onClick={mobile ? () => this.setState({ sheetOpen: !s.sheetOpen }) : undefined} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${accentLine}`, letterSpacing: '.16em', fontSize: 11, color: nc, cursor: mobile ? 'pointer' : undefined }}>
           <span>PROPERTIES</span><span>{panelTitle}{mobile ? (s.sheetOpen ? '  ▾' : '  ▴') : ''}</span>
         </div>
-        {sheetCollapsed ? <div style={{ padding: 10 }}>{actions}</div> : (
+        {sheetCollapsed ? <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>{tableBar}{actions}</div> : (
           <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {tableBar}
             {single && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(217,218,240,.12)', border: '1px solid rgba(217,218,240,.12)', fontFamily: "'GalmuriMono9',monospace", fontSize: 10 }}>
                 {(['X', 'Y', 'W', 'H'] as const).map(k => (
@@ -1131,8 +1409,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
                 <div style={{ fontSize: 11, color: 'rgba(217,218,240,.6)' }}>{t('props.format')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
                   {[F('B', t('props.bold'), 'bold', { w: 700 }), F('I', t('props.italic'), 'italic', { i: true }), F('S', t('props.strike'), 'strike', { s: true }), F('H1', t('props.h1'), 'h1'), F('H2', t('props.h2'), 'h2'),
-                    F('•', t('props.ul'), 'ul'), F('1.', t('props.ol'), 'ol'), F('☐', t('props.check'), 'check'), F('❝', t('props.quote'), 'quote'), F('<>', t('props.code'), 'code')]}
+                    F('•', t('props.ul'), 'ul'), F('1.', t('props.ol'), 'ol'), F('☐', t('props.check'), 'check'), F('❝', t('props.quote'), 'quote'), F('<>', t('props.code'), 'code'), F('▦', t('props.table'), 'table')]}
                 </div>
+                {s.tablePick && <TablePicker color={nc} label={t('props.table')} touch={touch} onPick={size => this.insertTableAt(size)} />}
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1157,7 +1436,7 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
     );
 
     const toolBtn = (key: string, glyph: string, label: string, title: string, run: () => void, on: boolean) => (
-      <button key={key} className="hv-ghost" onClick={run} title={title} style={{ width: mobile ? undefined : 58, flex: mobile ? 1 : undefined, minWidth: 0, height: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: on ? nc : 'transparent', color: on ? '#05060B' : '#D9DAF0', border: 'none', [mobile ? 'borderRight' : 'borderBottom']: '1px solid rgba(217,218,240,.1)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", padding: 0 }}>
+      <button key={key} data-table-tool={key === 'table' ? '1' : undefined} className="hv-ghost" onClick={run} title={title} style={{ width: mobile ? undefined : 58, flex: mobile ? 1 : undefined, minWidth: 0, height: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: on ? nc : 'transparent', color: on ? '#05060B' : '#D9DAF0', border: 'none', [mobile ? 'borderRight' : 'borderBottom']: '1px solid rgba(217,218,240,.1)', cursor: 'pointer', fontFamily: "'GalmuriMono11',monospace", padding: 0 }}>
         <span style={{ fontSize: 15, lineHeight: 1 }}>{glyph}</span>
         <span style={{ fontFamily: "'GalmuriMono9',monospace", fontSize: 8.5, letterSpacing: '.1em' }}>{label}</span>
       </button>
@@ -1167,10 +1446,11 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
       toolBtn('pan', '✥', 'PAN', t('tool.pan'), () => this.setTool('pan'), s.tool === 'pan' || s.space),
       toolBtn('text', 'T', 'TEXT', t('tool.text'), () => this.setTool('text'), s.tool === 'text'),
       toolBtn('img', '▣', 'IMAGE', t('tool.image'), () => this.fileRef.current?.click(), false),
+      toolBtn('table', '▦', 'TABLE', t('tool.table'), () => this.setState({ toolTablePick: !s.toolTablePick, settingsOpen: false }), s.toolTablePick),
       toolBtn('draw', '✎', 'DRAW', t('tool.draw'), () => this.setTool('draw'), s.tool === 'draw'),
       toolBtn('connect', '⟜', 'LINK', t('tool.link'), () => this.setTool('connect'), s.tool === 'connect'),
       toolBtn('undo', '↶', 'UNDO', t('tool.undo'), () => this.undo(), false),
-      toolBtn('set', '⚙', 'SET', t('tool.settings'), () => this.setState({ settingsOpen: !s.settingsOpen }), s.settingsOpen),
+      toolBtn('set', '⚙', 'SET', t('tool.settings'), () => this.setState({ settingsOpen: !s.settingsOpen, toolTablePick: false }), s.settingsOpen),
     ];
 
     const navBtn: React.CSSProperties = { padding: mobile ? '10px 12px' : '10px 14px', background: 'transparent', color: '#D9DAF0', border: 'none', borderRight: '1px solid rgba(217,218,240,.12)', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 12 };
@@ -1282,7 +1562,9 @@ export default class Canvas extends React.Component<{ initial: Persisted; fresh:
         )}
 
         {settings}
+        {tableToolPanel}
         {properties}
+        {tableBarKb}
 
         {!(mobile && (kbOpen || s.settingsOpen || (selBoxes.length > 0 && s.sheetOpen))) && (
           <div data-ui="1" onPointerDown={stop} onDoubleClick={stop} style={{ zoom: K, position: 'absolute', left: '50%', bottom: mobile ? (selBoxes.length ? 'calc(50px + 100px + var(--sab))' :'calc(50px + 10px + var(--sab))') : 'calc(16px + var(--sab))', transform: 'translateX(-50%)', display: 'flex', alignItems: 'stretch', border: `1px solid ${accentLine}`, background: 'rgba(6,7,13,.9)', boxShadow: `0 0 24px ${glowSoft}`, fontFamily: "'GalmuriMono11',monospace", fontSize: 12, whiteSpace: 'nowrap' }}>

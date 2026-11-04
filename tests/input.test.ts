@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { mouseAction, panDoubleClickable, DoubleClick, type Tool } from '../src/lib/input';
+import { mouseAction, panDoubleClickable, DoubleClick, tableSizeAt, TABLE_PICK_SLOP, type Tool } from '../src/lib/input';
+
+describe('표 크기 고르기', () => {
+  const r = { left: 100, top: 50, width: 160, height: 120 };   // 칸 하나 20×20 (8열 6줄)
+  it('포인터가 있는 칸까지의 크기', () => {
+    expect(tableSizeAt(101, 51, r)).toEqual({ cols: 1, rows: 1 });
+    expect(tableSizeAt(100 + 45, 50 + 65, r)).toEqual({ cols: 3, rows: 4 });
+    expect(tableSizeAt(259, 169, r)).toEqual({ cols: 8, rows: 6 });
+  });
+  it('가장자리를 조금 벗어나면 끝 칸, 더 멀어지면 취소', () => {
+    expect(tableSizeAt(100 + 160 + TABLE_PICK_SLOP, 60, r)).toEqual({ cols: 8, rows: 1 });
+    expect(tableSizeAt(100 - TABLE_PICK_SLOP, 60, r)).toEqual({ cols: 1, rows: 1 });
+    expect(tableSizeAt(100 + 160 + TABLE_PICK_SLOP + 1, 60, r)).toBe(null);
+    expect(tableSizeAt(110, 50 + 120 + TABLE_PICK_SLOP + 1, r)).toBe(null);
+  });
+});
 
 const TOOLS: Tool[] = ['select', 'pan', 'text', 'draw', 'connect'];
 const at = (part: 'resize' | 'handle' | 'body' | 'bg', button = 0, tool: Tool = 'select', space = false) => mouseAction({ part, button, tool, space });

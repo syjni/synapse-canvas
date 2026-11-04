@@ -7,7 +7,7 @@ export type HelpGroup = { title: string; items: { k: string; v: string }[] };
 const DESKTOP: [string, string[]][] = [
   ['CANVAS', ['canvasPan', 'canvasTrackpad', 'canvasZoom', 'canvasFit']],
   ['CATEGORY', ['catSwitch', 'catTrackpad', 'catKeys', 'catOrder']],
-  ['TEXT BOX', ['boxCreate', 'boxEdit', 'boxMove']],
+  ['TEXT BOX', ['boxCreate', 'boxEdit', 'boxTableNew', 'boxTable', 'boxMove']],
   ['SELECT', ['selMulti', 'selDelete', 'selUndo']],
   ['LINK', ['linkTool', 'linkSel', 'linkShape']],
   ['DRAW · SAVE', ['draw', 'autosave', 'backup', 'clear']],
@@ -18,7 +18,7 @@ const DESKTOP: [string, string[]][] = [
 const TOUCH: [string, string[]][] = [
   ['CANVAS', ['canvasPan', 'canvasZoom', 'canvasFit']],
   ['CATEGORY', ['catSwitch', 'catButtons', 'catOrder']],
-  ['TEXT BOX', ['boxCreate', 'boxEdit', 'boxMove']],
+  ['TEXT BOX', ['boxCreate', 'boxEdit', 'boxTableNew', 'boxTable', 'boxMove']],
   ['SELECT', ['selTap', 'selMulti', 'selDelete']],
   ['LINK', ['linkTool', 'linkSel', 'unlink']],
   ['DRAW · SAVE', ['draw', 'autosave', 'backup', 'clear']],

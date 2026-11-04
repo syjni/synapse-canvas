@@ -32,6 +32,17 @@ export function mouseAction(p: { part: Part; button: number; tool: Tool; space: 
   return 'click-pan';
 }
 
+// ── 표 크기 고르기 ───────────────────────────────────
+export const TABLE_PICK_COLS = 8, TABLE_PICK_ROWS = 6, TABLE_PICK_SLOP = 10;
+export type TableSize = { cols: number; rows: number };   // rows는 머리글 줄을 포함한 줄 수
+// 격자 위 포인터 위치의 표 크기. 가장자리는 조금 벗어나도 끝 칸으로 보고, 더 멀어지면 null(취소)
+export function tableSizeAt(x: number, y: number, r: { left: number; top: number; width: number; height: number }): TableSize | null {
+  const dx = x - r.left, dy = y - r.top;
+  if (dx < -TABLE_PICK_SLOP || dy < -TABLE_PICK_SLOP || dx > r.width + TABLE_PICK_SLOP || dy > r.height + TABLE_PICK_SLOP) return null;
+  const pick = (d: number, len: number, n: number) => Math.max(1, Math.min(n, Math.floor((d / len) * n) + 1));
+  return { cols: pick(dx, r.width, TABLE_PICK_COLS), rows: pick(dy, r.height, TABLE_PICK_ROWS) };
+}
+
 // ── PAN 도구 더블클릭 → 글 상자 ─────────────────────
 // PAN 도구는 누르는 순간부터 화면 이동이라 브라우저 dblclick(끈 뒤에도 발생)을 쓰지 않고 누름·뗌으로 직접 판정한다.
 // 두 클릭의 뗀 시각 간격 ≤ 300ms, 누른 위치 차이 ≤ 6px, 두 번 모두 누른 동안 3px 미만으로 움직였을 때만.
